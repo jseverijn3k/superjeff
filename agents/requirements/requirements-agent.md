@@ -65,12 +65,15 @@ An app definition object from the decomposition output:
   "views": [
     {
       "name": "string",
-      "type": "ViewSet|APIView|GenericAPIView",
+      "type": "fbv_html|fbv_api",
       "model": "string",
       "serializer": "string",
       "http_methods": ["string"],
       "permission_classes": ["string"],
       "authentication_classes": ["string"],
+      "service": "string",
+      "service_method": "string",
+      "location": "apps/<app>/views.py|api/v1/views/<app>.py",
       "filters": ["string"],
       "pagination": "string"
     }
@@ -135,32 +138,80 @@ An app definition object from the decomposition output:
 - MUST NOT use `ModelAdmin` — this spec targets DRF API only
 - MUST validate every input field in the serializer
 
-## Django Instincts Applied
+## Django Principles Applied
+
+These rules are non-negotiable and derived from `instincts/claude-rules-template.md`.
+
+### Architecture
+
+- **Layered architecture**: Views → Services → Models. Business logic NEVER in views.
+- Every view calls a service method. Views handle HTTP only.
+- Services accept `user` or context — never `request`, `HttpResponse`, or serializer instances.
+- Services are stateless. One service per aggregate root. Max ~300 lines — split at sync/permissions/side-effects.
+- `select_related` and `prefetch_related` are the service's responsibility, never the view's.
 
 ### Models
-- Always include `created_at = models.DateTimeField(auto_now_add=True)`
-- Always include `updated_at = models.DateTimeField(auto_now=True)`
+
+- Always `created_at = models.DateTimeField(auto_now_add=True)`
+- Always `updated_at = models.DateTimeField(auto_now=True)`
+- Always `__str__` returning a human-readable identifier
+- Always `Meta.ordering` for any model used in list views
 - Use `UUIDField(primary_key=True, default=uuid.uuid4, editable=False)` for public-facing resources
-- Add `Meta.ordering` for all list views
-- Define `__str__` returning a human-readable identifier
+- Never `null=True` on `CharField` or `TextField` — use `blank=True, default=""`
+- Models are "dumb": no business methods, no cross-model queries, no permission logic
 
 ### Serializers
-- Use `read_only_fields` for `id`, `created_at`, `updated_at`
-- Validate at field level and object level separately
-- Use `SerializerMethodField` for computed values
-- Use nested serializers for related objects in read endpoints
 
-### Views
-- Use `ModelViewSet` for standard CRUD
-- Use `APIView` for custom actions
-- Always set `permission_classes` and `authentication_classes` explicitly
-- Use `django-filter` for filtering
-- Use `PageNumberPagination` by default
+- Never `fields = "__all__"` — always list fields explicitly
+- `read_only_fields` must include `id`, `created_at`, `updated_at`
+- No business logic in serializers — only input validation and data mapping
+- No ownership checks in serializers — that belongs in services
+- Validate at field level and object level separately
+
+### Views (HTML — Django templates + HTMX)
+
+- **ONLY Function-Based Views** — never CBVs, never ViewSets, never generic views
+- Located in `apps/<app>/views.py`
+- Decorated with `@login_required`, never check `request.user.is_staff` directly
+- Catch service exceptions and render with `messages.error()` / `messages.success()`
+- Never perform direct model queries — always via service
+
+### Views (API — DRF)
+
+- **ONLY `@api_view` + `@permission_classes`** — never ViewSets, never APIView subclasses, never routers
+- Located in `api/v1/views/<app>.py`
+- Always decorated with `@extend_schema(...)` for OpenAPI documentation
+- Catch service exceptions and raise DRF `ValidationError`
+- Explicit URL routes in `api/v1/urls.py` — never use DRF routers
 
 ### Permissions
-- `IsAuthenticated` as baseline
-- Define `IsOwner`, `IsCompanyMember`, `IsAdmin` as needed
-- Never use `AllowAny` on write endpoints
+
+- `IsAuthenticated` as baseline on every protected view
+- Define `IsOwner`, `IsCompanyMember` etc. as needed — in `apps/<app>/permissions.py`
+- Never `AllowAny` on write endpoints
+- All ownership checks in services, not in views
+
+### Services
+
+- All business logic in `apps/<app>/services/<service>.py`
+- Constructor signature: `def __init__(self, user)`
+- Method naming: `create_`, `update_`, `delete_`, `get_`, `can_`, `list_`
+- Raise domain exceptions from `apps/<app>/exceptions.py`
+- Use `@transaction.atomic` on multi-write operations
+- Side effects (email, notifications, Celery tasks) triggered explicitly from services — never from model `save()` or signals
+- Django signals ONLY for cache invalidation and auditing
+
+### Caching
+
+- Cache via `django.core.cache` with Redis backend
+- Cache key pattern: `<resource>_<user_id>_<params>`
+- Always log cache HIT / MISS at `logger.info()`
+- Invalidate via signals — only for technical concerns, not business logic
+
+### Celery
+
+- Only services trigger Celery tasks — views never call `.delay()` directly
+- Tasks import the service inside the task function to avoid circular imports
 
 ## Workflow Process
 

@@ -124,6 +124,91 @@ superjeff/
 
 ---
 
+## Django Rules & Principles
+
+These rules are enforced by the Requirements Agent and the build pipeline. They are defined in [instincts/claude-rules-template.md](instincts/claude-rules-template.md) and applied automatically to every generated Django project.
+
+### Architecture — Layered, Service-First
+
+```text
+Views / API      ← HTTP handling only, no business logic
+    ↓
+Services         ← All business logic lives here
+    ↓
+Models (ORM)     ← Data definition only, "dumb" models
+```
+
+| Rule | Detail |
+| --- | --- |
+| **Service layer is mandatory** | Every view calls a service method. Direct model queries in views are forbidden. |
+| **Services are stateless** | Constructor accepts `user`. Never accepts `request`, `HttpResponse`, or serializer instances. |
+| **One service per aggregate root** | Max ~300 lines. Split into sub-services at sync logic, permissions, or side-effects. |
+| **N+1 is the service's problem** | `select_related` / `prefetch_related` in service methods, never in views. |
+
+### Views — Function-Based Only
+
+| Rule | Detail |
+| --- | --- |
+| **FBVs always** | `def my_view(request):` — never `class MyView(APIView)`, never `class MyViewSet(ModelViewSet)` |
+| **HTML views** | `@login_required`, in `apps/<app>/views.py`, catch service exceptions → `messages.error()` |
+| **API views** | `@api_view` + `@permission_classes`, in `api/v1/views/<app>.py`, `@extend_schema` required |
+| **No DRF routers** | Explicit URL paths only in `api/v1/urls.py` |
+
+### Models — Dumb Data Layer
+
+| Rule | Detail |
+| --- | --- |
+| Always `__str__` | Returns a human-readable identifier |
+| Always timestamps | `created_at = auto_now_add`, `updated_at = auto_now` |
+| Always UUID PK | `UUIDField(primary_key=True, default=uuid.uuid4, editable=False)` on public-facing resources |
+| Always `Meta.ordering` | On any model used in a list view |
+| No `null=True` on text fields | Use `blank=True, default=""` instead |
+| No business logic in models | No business methods, no cross-model queries, no permission logic |
+
+### Serializers
+
+| Rule | Detail |
+| --- | --- |
+| Never `fields = "__all__"` | Always explicit field list |
+| `read_only_fields` | Always includes `id`, `created_at`, `updated_at` |
+| No business logic | Only input validation and data mapping |
+| No ownership checks | Ownership belongs in services |
+
+### Services
+
+| Rule | Detail |
+| --- | --- |
+| Location | `apps/<app>/services/<service>.py` |
+| Method naming | `create_`, `update_`, `delete_`, `get_`, `can_`, `list_` |
+| Transactions | `@transaction.atomic` on multi-write operations |
+| Exceptions | Raise from `apps/<app>/exceptions.py` — never raw `Exception` |
+| Side effects | Triggered explicitly from services — never from `model.save()` or signals |
+| Signals | Django signals only for cache invalidation and auditing, never for business logic |
+
+### Caching & Celery
+
+| Rule | Detail |
+| --- | --- |
+| Cache backend | Redis via `django.core.cache` |
+| Cache key pattern | `<resource>_<user_id>_<params>` |
+| Log HIT/MISS | `logger.info()` on every cache access |
+| Celery tasks | Only triggered from services — views never call `.delay()` directly |
+
+### What Is Forbidden
+
+- Class-Based Views of any kind
+- ViewSets of any kind
+- DRF routers
+- `fields = "__all__"` in serializers
+- Business logic in views, models, or serializers
+- Direct model queries in views
+- `request.user.is_staff` checks in views
+- `eval()`, `exec()`, hardcoded secrets
+- Django signals for business logic
+- `print()` — use `logging`
+
+---
+
 ## Instincts
 
 Behavioral rules loaded by every agent:
@@ -131,6 +216,7 @@ Behavioral rules loaded by every agent:
 - **[instincts/django.yaml](instincts/django.yaml)** — Models always have `__str__`, UUIDs, timestamps. Serializers never use `__all__`. Views always have explicit `permission_classes`.
 - **[instincts/security.yaml](instincts/security.yaml)** — No hardcoded secrets. No raw SQL. No `eval()`. JWT tokens must expire.
 - **[instincts/testing.yaml](instincts/testing.yaml)** — Tests are written before implementation. Every endpoint has 5+ test cases. Use pytest + factory_boy.
+- **[instincts/claude-rules-template.md](instincts/claude-rules-template.md)** — Full CLAUDE.md template applied to every new project: layered architecture, FBV enforcement, service layer, caching, Celery, idempotent migrations, git workflow.
 
 ---
 
