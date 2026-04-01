@@ -224,15 +224,58 @@ Behavioral rules loaded by every agent:
 
 Loaded from [hooks/hooks.json](hooks/hooks.json):
 
-| Hook | Event | Action |
+### SessionStart
+
+| Hook | Action |
+| --- | --- |
+| `superjeff:init` | Create artifacts directories, print session context |
+| `superjeff:context-load` | Detect Python/Django environment |
+
+### PreToolUse — Security (blocking)
+
+| Hook | Matcher | Action |
 | --- | --- | --- |
-| `superjeff:init` | SessionStart | Create artifacts directories |
-| `security:no-verify-guard` | PreToolUse (Bash) | Block `git --no-verify` |
-| `security:no-force-push-main` | PreToolUse (Bash) | Block force push to main |
-| `security:no-eval-exec` | PreToolUse (Write) | Warn on `eval()`/`exec()` |
-| `security:no-hardcoded-secrets` | PreToolUse (Write) | Block hardcoded secrets |
-| `superjeff:validate-json-output` | PostToolUse (Write) | Validate JSON in artifacts/ |
-| `superjeff:pipeline-state-persist` | Stop | Backup pipeline state |
+| `security:no-verify-guard` | Bash | Block `git --no-verify` |
+| `security:no-force-push-main` | Bash | Block force push to main/master |
+| `security:no-hardcoded-secrets` | Write\|Edit | Block hardcoded credentials |
+| `security:no-eval-exec` | Write\|Edit | Block `eval()`/`exec()` |
+| `security:no-raw-sql` | Write\|Edit | Warn on raw SQL (ORM required) |
+
+### PreToolUse — Architecture (blocking)
+
+| Hook | Matcher | Action |
+| --- | --- | --- |
+| `architecture:no-cbv-viewset` | Write\|Edit | Block CBVs, ViewSets — FBV only |
+| `architecture:no-fields-all` | Write\|Edit | Block `fields = "__all__"` in serializers |
+
+### PreToolUse — Quality (advisory)
+
+| Hook | Matcher | Action |
+| --- | --- | --- |
+| `commit:quality-check` | Bash | Warn on `print()` before git commit |
+| `security:config-protection` | Write\|Edit | Warn before modifying production settings |
+
+### PostToolUse
+
+| Hook | Matcher | Action |
+| --- | --- | --- |
+| `superjeff:validate-json-artifacts` | Write | Validate JSON in `artifacts/` |
+| `quality:migration-check` | Bash | Remind to run `makemigrations` after model edits |
+| `post:bash:command-log` | Bash | Append all commands to `artifacts/bash-audit.log` |
+
+### Stop
+
+| Hook | Action |
+| --- | --- |
+| `stop:pipeline-state-persist` | Back up `pipeline_state.json` |
+| `stop:test-reminder` | Remind to run `pytest` if Python files changed |
+| `stop:session-summary` | Print artifact counts for the session |
+
+### PreCompact
+
+| Hook | Action |
+| --- | --- |
+| `pre:compact:state-save` | Save pipeline state before context compaction |
 
 ---
 

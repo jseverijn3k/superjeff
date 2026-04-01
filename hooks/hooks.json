@@ -4,13 +4,26 @@
       {
         "id": "superjeff:init",
         "matcher": "*",
-        "description": "Load instincts and validate artifacts directory on session start",
+        "description": "Create artifacts directories and print session context on start",
         "hooks": [
           {
             "type": "command",
-            "command": "mkdir -p artifacts/requirements artifacts/contracts artifacts/plans artifacts/tests artifacts/code artifacts/reports && echo 'SuperJeff artifacts directory ready'",
+            "command": "mkdir -p artifacts/specs artifacts/requirements artifacts/contracts artifacts/plans artifacts/tests artifacts/code artifacts/reports && echo '=== SuperJeff session started ===' && echo 'Artifacts directory: ready' && echo 'Instincts loaded: django.yaml | security.yaml | testing.yaml' && echo 'Run /superjeff:brainstorm to start a new feature'",
             "timeout": 5,
             "async": false
+          }
+        ]
+      },
+      {
+        "id": "superjeff:context-load",
+        "matcher": "*",
+        "description": "Detect Python/Django environment and print active context",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python --version 2>/dev/null && ([ -f manage.py ] && echo 'Django project detected: manage.py found' || echo 'No Django project in current directory') && ([ -f requirements.txt ] || [ -f requirements-dev.txt ] && echo 'Requirements file found' || echo 'No requirements file found')",
+            "timeout": 5,
+            "async": true
           }
         ]
       }
@@ -43,42 +56,133 @@
         ]
       },
       {
-        "id": "security:no-eval-exec",
-        "matcher": "Write",
-        "description": "Warn when writing eval() or exec() into Python files",
+        "id": "security:no-hardcoded-secrets",
+        "matcher": "Write|Edit",
+        "description": "Block hardcoded secrets in any Python or config file",
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'eval\\(|exec\\('; then echo 'WARNING: eval/exec detected in generated code. Security review required.'; fi",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qiE 'secret_key\\s*=\\s*[\"\\'\\x27][A-Za-z0-9]|password\\s*=\\s*[\"\\'\\x27][A-Za-z0-9]|api_key\\s*=\\s*[\"\\'\\x27][A-Za-z0-9]|token\\s*=\\s*[\"\\'\\x27][A-Za-z0-9]{10}'; then echo 'BLOCKED: Hardcoded secret detected. Load from environment variables instead.' && exit 1; fi",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      },
+      {
+        "id": "security:no-eval-exec",
+        "matcher": "Write|Edit",
+        "description": "Block eval() and exec() in generated Python code",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE '^[^#]*eval\\(|^[^#]*exec\\('; then echo 'BLOCKED: eval()/exec() detected. This is a security violation per instincts/security.yaml.' && exit 1; fi",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      },
+      {
+        "id": "security:no-raw-sql",
+        "matcher": "Write|Edit",
+        "description": "Warn on raw SQL queries in Python files — ORM required per Django rules",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE '\\.raw\\(|cursor\\.execute\\('; then echo 'WARNING: Raw SQL detected. Use the Django ORM. If raw SQL is intentional, ensure it uses parameterized queries and add a comment: # raw-sql-approved'; fi",
             "timeout": 5,
             "async": true
           }
         ]
       },
       {
-        "id": "security:no-hardcoded-secrets",
-        "matcher": "Write",
-        "description": "Warn when writing hardcoded secrets into Python files",
+        "id": "architecture:no-cbv-viewset",
+        "matcher": "Write|Edit",
+        "description": "Block Class-Based Views and ViewSets — FBV only per Django rules",
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qiE 'secret_key\\s*=\\s*[\"\\x27][A-Za-z0-9]|password\\s*=\\s*[\"\\x27][A-Za-z0-9]|api_key\\s*=\\s*[\"\\x27][A-Za-z0-9]'; then echo 'BLOCKED: Hardcoded secret detected. Use environment variables.' && exit 1; fi",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'class [A-Z][a-zA-Z]*(APIView|View)\\(|class [A-Z][a-zA-Z]*ViewSet\\(|ModelViewSet|ReadOnlyModelViewSet'; then echo 'BLOCKED: Class-Based View or ViewSet detected. Use Function-Based Views with @api_view decorator only. See instincts/django.yaml.' && exit 1; fi",
             "timeout": 5,
             "async": false
+          }
+        ]
+      },
+      {
+        "id": "architecture:no-fields-all",
+        "matcher": "Write|Edit",
+        "description": "Block fields = '__all__' in serializers",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE \"fields = '__all__'|fields = \\\"__all__\\\"\"; then echo 'BLOCKED: fields = __all__ is not allowed in serializers. Always list fields explicitly. See instincts/django.yaml.' && exit 1; fi",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      },
+      {
+        "id": "commit:quality-check",
+        "matcher": "Bash",
+        "description": "On git commit: verify no print() statements and confirm commit message has correct format",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -q 'git commit'; then PRINT_COUNT=$(grep -rn '^[^#]*print(' apps/ 2>/dev/null | grep -v test | wc -l); if [ \"$PRINT_COUNT\" -gt 0 ]; then echo \"WARNING: $PRINT_COUNT print() statement(s) found in non-test code. Replace with logging.\"; fi; fi",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      },
+      {
+        "id": "security:config-protection",
+        "matcher": "Write|Edit",
+        "description": "Warn before modifying Django settings files",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'config/settings/(base|production)\\.py'; then echo 'WARNING: Modifying production/base settings. Ensure SECRET_KEY, DEBUG, ALLOWED_HOSTS load from environment variables only.'; fi",
+            "timeout": 5,
+            "async": true
           }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "id": "superjeff:validate-json-output",
+        "id": "superjeff:validate-json-artifacts",
         "matcher": "Write",
-        "description": "Validate JSON files written to artifacts/ against their schemas",
+        "description": "Validate JSON files written to artifacts/ are well-formed",
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$CLAUDE_TOOL_RESULT_PATH\" | grep -q 'artifacts/'; then python -m json.tool \"$CLAUDE_TOOL_RESULT_PATH\" > /dev/null 2>&1 || echo \"WARNING: Invalid JSON written to $CLAUDE_TOOL_RESULT_PATH\"; fi",
+            "command": "if echo \"$CLAUDE_TOOL_RESULT_PATH\" | grep -q 'artifacts/'; then python -m json.tool \"$CLAUDE_TOOL_RESULT_PATH\" > /dev/null 2>&1 || echo \"WARNING: Invalid JSON written to $CLAUDE_TOOL_RESULT_PATH — check schema compliance\"; fi",
             "timeout": 10,
+            "async": true
+          }
+        ]
+      },
+      {
+        "id": "quality:migration-check",
+        "matcher": "Bash",
+        "description": "After model file edits, remind to run makemigrations",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'models\\.py' && echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'Write|Edit'; then echo 'REMINDER: models.py was modified. Run: python manage.py makemigrations <app>'; fi",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      },
+      {
+        "id": "post:bash:command-log",
+        "matcher": "Bash",
+        "description": "Append all bash commands to session audit log",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $CLAUDE_TOOL_INPUT\" >> artifacts/bash-audit.log 2>/dev/null || true",
+            "timeout": 5,
             "async": true
           }
         ]
@@ -86,15 +190,56 @@
     ],
     "Stop": [
       {
-        "id": "superjeff:pipeline-state-persist",
+        "id": "stop:pipeline-state-persist",
         "matcher": "*",
-        "description": "Persist pipeline state on session end",
+        "description": "Back up pipeline state JSON on session end",
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -f artifacts/pipeline_state.json ]; then cp artifacts/pipeline_state.json artifacts/pipeline_state.$(date +%Y%m%d_%H%M%S).bak; fi",
+            "command": "if [ -f artifacts/pipeline_state.json ]; then cp artifacts/pipeline_state.json artifacts/pipeline_state.$(date +%Y%m%d_%H%M%S).bak && echo 'Pipeline state backed up.'; fi",
             "timeout": 5,
             "async": true
+          }
+        ]
+      },
+      {
+        "id": "stop:test-reminder",
+        "matcher": "*",
+        "description": "Remind to run tests if Python files were modified this session",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "MODIFIED=$(git diff --name-only 2>/dev/null | grep '\\.py$' | grep -v migrations | wc -l); if [ \"$MODIFIED\" -gt 0 ]; then echo \"Session ended with $MODIFIED modified Python file(s). Run: pytest --tb=short -q\"; fi",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      },
+      {
+        "id": "stop:session-summary",
+        "matcher": "*",
+        "description": "Print a summary of artifacts produced this session",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '=== SuperJeff session summary ===' && echo 'Specs:' $(ls artifacts/specs/ 2>/dev/null | wc -l) && echo 'Plans:' $(ls artifacts/plans/ 2>/dev/null | wc -l) && echo 'Reports:' $(ls artifacts/reports/ 2>/dev/null | wc -l) && echo 'Audit log:' $(wc -l < artifacts/bash-audit.log 2>/dev/null || echo 0) 'commands logged'",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "id": "pre:compact:state-save",
+        "matcher": "*",
+        "description": "Save pipeline state before context compaction so it survives the compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f artifacts/pipeline_state.json ]; then cp artifacts/pipeline_state.json artifacts/pipeline_state.pre-compact.json && echo 'State saved before compaction.'; fi",
+            "timeout": 5,
+            "async": false
           }
         ]
       }
