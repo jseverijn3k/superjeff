@@ -9,19 +9,22 @@ An AI-native software development system that transforms a high-level business c
 ```text
 Business Case (free text)
         ↓
-  /superjeff:decompose
+  /superjeff:brainstorm        ← design gate, Socratic questions, design artifact
         ↓
-  Django App Map (JSON)
+  /superjeff:decompose         ← Django app map (JSON, schema-validated)
         ↓
-  /superjeff:specify <app>
-        ↓
-  Implementation-Ready Spec (JSON)
+  /superjeff:specify <app>     ← models, services, views, tests spec (JSON)
         ↓
   /superjeff:build <app>
+        ├─ Plan               ← 2-5 min tasks, exact code, verify commands
+        ├─ RED                ← failing tests (pytest + factory_boy)
+        ├─ GREEN              ← implement task-by-task, verify after each
+        ├─ Code Review        ← spec compliance + architecture check
+        ├─ Verification Gate  ← fresh pytest + grep, evidence required
+        ├─ Quality Audit      ← 5-gate Quality Agent report
+        └─ Security Audit     ← OWASP Top 10 Security Agent report
         ↓
-  TDD: Tests → Code → Refactor → Security Review
-        ↓
-  /superjeff:validate
+  /superjeff:validate          ← final gate across all apps
         ↓
   Production-Ready Django App
 ```
@@ -32,10 +35,13 @@ Business Case (free text)
 
 | Command | What It Does |
 | --- | --- |
+| `/superjeff:brainstorm` | Design gate — Socratic validation before planning |
 | `/superjeff:decompose` | Business case → structured Django app list |
 | `/superjeff:specify <app>` | App definition → full implementation spec |
-| `/superjeff:build <app>` | Spec → TDD build pipeline |
+| `/superjeff:build <app>` | Full TDD pipeline: plan → RED → GREEN → review → audit |
 | `/superjeff:validate` | Full quality + security audit |
+| `/superjeff:checkpoint` | Save pipeline state + print progress summary |
+| `/superjeff:learn` | Capture a session insight as a permanent instinct rule |
 
 ---
 
@@ -48,19 +54,24 @@ superjeff/
 │   ├── product/            # Product Decomposition Agent
 │   ├── requirements/       # Requirements Agent (per app)
 │   ├── frontend/           # User flow + component spec agent
-│   ├── quality/            # Quality + accessibility audit agent
+│   ├── quality/            # 5-gate quality audit (incl. architecture compliance)
 │   └── security/           # OWASP Top 10 security audit agent
 │
 ├── skills/
+│   ├── brainstorming/      # Socratic design gate before planning
+│   ├── planning/           # 2-5 min subtask breakdown with verify commands
+│   ├── testing/            # TDD workflow (RED→GREEN→REFACTOR)
+│   ├── code-review/        # 2-stage review: spec compliance + architecture
+│   ├── verification/       # Evidence-before-claims gate (fresh pytest + grep)
+│   ├── debugging/          # 4-phase root-cause methodology
 │   ├── decomposition/      # Business case → domain mapping
 │   ├── django/             # Model/serializer/view generation patterns
-│   ├── testing/            # TDD workflow (RED→GREEN→REFACTOR)
 │   └── validation/         # Quality and security gate checklists
 │
 ├── workflows/
-│   ├── bc_to_apps.yaml         # Decompose workflow
+│   ├── bc_to_apps.yaml          # Decompose workflow
 │   ├── app_to_requirements.yaml # Specify workflow
-│   └── build_pipeline.yaml     # Build + validate workflow
+│   └── build_pipeline.yaml      # Build pipeline v2 (9 stages)
 │
 ├── schemas/
 │   ├── app_schema.json          # Validates decomposition output
@@ -68,25 +79,29 @@ superjeff/
 │   └── api_contract.json        # API contract schema
 │
 ├── instincts/
-│   ├── django.yaml    # Django model/view/serializer rules
-│   ├── security.yaml  # Security enforcement rules
-│   └── testing.yaml   # TDD enforcement rules
+│   ├── django.yaml              # Django model/view/serializer rules
+│   ├── security.yaml            # Security rules + prompt injection + agentic safety
+│   ├── testing.yaml             # TDD enforcement rules
+│   └── claude-rules-template.md # Generic CLAUDE.md for new projects
 │
 ├── hooks/
-│   └── hooks.json     # Pre/PostToolUse + SessionStart hooks
+│   └── hooks.json               # 16 hooks across 5 lifecycle events
 │
 ├── commands/
-│   ├── decompose.md
-│   ├── specify.md
-│   ├── build.md
-│   └── validate.md
+│   ├── brainstorm.md   # /superjeff:brainstorm
+│   ├── decompose.md    # /superjeff:decompose
+│   ├── specify.md      # /superjeff:specify
+│   ├── build.md        # /superjeff:build
+│   ├── validate.md     # /superjeff:validate
+│   ├── checkpoint.md   # /superjeff:checkpoint
+│   └── learn.md        # /superjeff:learn
 │
 ├── examples/
 │   └── expense-tracker/   # Full end-to-end example
 │
 ├── artifacts/             # Generated outputs (gitignored)
 │
-└── SOUL.md                # Design principles
+└── SOUL.md                # 6 design principles + git workflow
 ```
 
 ---
@@ -291,13 +306,14 @@ See [examples/expense-tracker/](examples/expense-tracker/) for a complete end-to
 
 ## Design Philosophy
 
-See [SOUL.md](SOUL.md) for the five principles:
+See [SOUL.md](SOUL.md) for the six principles:
 
 1. **Agent-First** — Route to a specialist. Never implement generically.
 2. **Test-Driven** — RED before GREEN. Always.
 3. **Security-First** — Validation is a design constraint, not a QA gate.
 4. **Structured Output** — JSON or YAML. Never prose.
 5. **Plan Before Execute** — No implementation without a completed spec.
+6. **Commit Every Stage** — Every pipeline stage produces a git commit. A stage without a commit did not happen.
 
 ---
 
