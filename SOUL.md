@@ -43,20 +43,26 @@ SuperJeff uses git as the audit trail for the pipeline. Every stage transition i
 
 | Type | When to use |
 | --- | --- |
+| `design` | After brainstorm design artifact is saved |
 | `decompose` | After Product Decomposition Agent produces app list |
 | `specify` | After Requirements Agent produces app spec |
+| `plan` | After task breakdown plan is generated |
 | `test` | After failing tests are written (RED phase) |
 | `implement` | After implementation passes tests (GREEN phase) |
-| `refactor` | After Quality Agent review and fixes |
+| `refactor` | After code review and Quality Agent fixes |
 | `secure` | After Security Agent review and fixes |
 | `validate` | After full validation passes |
 
 ### Examples
 
 ```
+design(expensio): expense tracker — multi-tenant approval workflow design
+
 decompose(expensio): 7 Django apps from expense tracker business case
 
 specify(expenses): full model/view/serializer spec with 7 test cases
+
+plan(expenses): 14 tasks — exceptions → models → factories → tests → services → views
 
 test(expenses): failing tests for expense report CRUD and submit flow
 
@@ -84,22 +90,26 @@ validate(expenses): all quality and security gates pass
 ```text
 Business Case
      ↓
-Product Decomposition      [Product Decomposition Agent]
+/superjeff:brainstorm       [Brainstorming Skill]
+     ↓  → artifacts/specs/YYYY-MM-DD-<feature>.md
+Product Decomposition       [Product Decomposition Agent]
      ↓  git commit: decompose(<project>)
-App Requirements           [Requirements Agent × N apps]
+App Requirements            [Requirements Agent × N apps]
      ↓  git commit: specify(<app>) per app
-Implementation Plan        [Planning Agent]
-     ↓
-TDD — Write Failing Tests  [Execution Layer]
-     ↓  git commit: test(<app>)
-TDD — Implement to Pass    [Execution Layer]
-     ↓  git commit: implement(<app>)
-Code Review                [Quality Agent]
+Implementation Plan         [Planning Skill — 2-5 min tasks, exact code, verify cmds]
+     ↓  → artifacts/plans/<app>_plan.md
+TDD — Write Failing Tests   [Testing Skill — pytest + factory_boy]
+     ↓  git commit: test(<app>)   ← all tests confirmed FAILING
+TDD — Implement to Pass     [Follow plan task-by-task, verify after each]
+     ↓  git commit: implement(<app>)  ← all tests confirmed PASSING
+Code Review                 [Code Review Skill — spec compliance + architecture]
      ↓  git commit: refactor(<app>)
-Security Check             [Security Agent]
+Verification Gate           [Verification Skill — fresh pytest + grep checks]
+     ↓  evidence shown, not assumed
+Quality Audit               [Quality Agent — 5-gate structured report]
+     ↓  git commit: refactor(<app>) if fixes needed
+Security Audit              [Security Agent — OWASP Top 10]
      ↓  git commit: secure(<app>)
-Accessibility Check        [Quality Agent]
-     ↓
 Validated Artifact
      ↓  git commit: validate(<app>)
 ```
