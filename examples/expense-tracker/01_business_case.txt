@@ -1,0 +1,23 @@
+Build a B2B SaaS platform where companies can manage employee expense reports.
+
+Employees can:
+- Submit expense reports with line items and receipt photos
+- Categorize expenses (travel, meals, accommodation, equipment)
+- Track the status of their submissions
+
+Managers can:
+- Review and approve or reject expense reports
+- Set monthly budgets per team and department
+- See spending trends and export reports
+
+Finance team can:
+- Process approved reimbursements
+- Connect to accounting software (QuickBooks, Xero)
+- Export transaction data as CSV
+
+All users:
+- Login with email/password or SSO (Google, Microsoft)
+- Receive notifications when their report status changes
+- Access via web app and mobile-friendly API
+
+The system must support multi-tenancy: each company's data is completely isolated.

@@ -1,0 +1,117 @@
+name: django-instincts
+description: Behavioral rules for Django model, view, and serializer generation
+version: "1.0"
+applies_to: ["requirements-agent", "execution-layer"]
+
+rules:
+
+  models:
+    - id: model_str_required
+      trigger: "generating any Django model"
+      rule: "Always implement __str__ returning a human-readable identifier"
+      example: "def __str__(self): return self.name"
+      severity: critical
+
+    - id: model_timestamps
+      trigger: "generating any Django model"
+      rule: "Always add created_at = DateTimeField(auto_now_add=True) and updated_at = DateTimeField(auto_now=True)"
+      severity: critical
+
+    - id: model_uuid_pk
+      trigger: "generating a model that will be exposed via API"
+      rule: "Use UUIDField(primary_key=True, default=uuid.uuid4, editable=False) instead of auto-increment integer"
+      severity: high
+
+    - id: model_indexes
+      trigger: "generating a ForeignKey or frequently filtered field"
+      rule: "Add db_index=True or define it in Meta.indexes"
+      severity: high
+
+    - id: model_migrations
+      trigger: "after any model field change"
+      rule: "Run python manage.py makemigrations <app_name>"
+      severity: critical
+
+    - id: model_ordering
+      trigger: "generating a model that will be listed"
+      rule: "Define Meta.ordering to ensure consistent queryset order"
+      severity: medium
+
+    - id: model_no_null_char
+      trigger: "generating a CharField or TextField"
+      rule: "Never use null=True on CharField or TextField — use blank=True with default='' instead"
+      severity: high
+
+  serializers:
+    - id: serializer_no_all
+      trigger: "generating any serializer"
+      rule: "Never use fields = '__all__' — always list fields explicitly"
+      severity: critical
+
+    - id: serializer_read_only_system_fields
+      trigger: "generating any serializer"
+      rule: "Always add id, created_at, updated_at to read_only_fields"
+      severity: high
+
+    - id: serializer_validate_required
+      trigger: "generating a serializer for a write endpoint"
+      rule: "Add validate_<fieldname> for every field with business logic"
+      severity: high
+
+    - id: serializer_nested_read
+      trigger: "generating a serializer for a detail or list endpoint with related objects"
+      rule: "Use nested serializers for reads; accept PKs for writes"
+      severity: medium
+
+  views:
+    - id: view_explicit_permissions
+      trigger: "generating any view or viewset"
+      rule: "Always set permission_classes explicitly — never rely on global defaults"
+      severity: critical
+
+    - id: view_explicit_auth
+      trigger: "generating any view or viewset"
+      rule: "Always set authentication_classes explicitly"
+      severity: critical
+
+    - id: view_no_allow_any_write
+      trigger: "generating a POST, PUT, PATCH, or DELETE endpoint"
+      rule: "Never use AllowAny permission on write endpoints"
+      severity: critical
+
+    - id: view_queryset_scoped
+      trigger: "generating a viewset for a tenant-aware or user-owned resource"
+      rule: "Override get_queryset() to scope results to the authenticated user/company"
+      severity: critical
+
+    - id: view_pagination
+      trigger: "generating a list endpoint"
+      rule: "Always set pagination_class — default to PageNumberPagination with page_size=20"
+      severity: high
+
+  urls:
+    - id: urls_app_namespace
+      trigger: "generating urls.py"
+      rule: "Always define app_name for namespace support"
+      severity: medium
+
+    - id: urls_api_prefix
+      trigger: "generating URL patterns"
+      rule: "All API endpoints must be under /api/v1/ prefix"
+      severity: high
+
+  settings:
+    - id: settings_no_debug_production
+      trigger: "generating settings.py"
+      rule: "Set DEBUG = env.bool('DEBUG', default=False)"
+      severity: critical
+
+    - id: settings_secret_key_env
+      trigger: "generating settings.py"
+      rule: "Load SECRET_KEY from environment variable — never hardcode"
+      severity: critical
+
+    - id: settings_allowed_hosts_explicit
+      trigger: "generating settings.py"
+      rule: "Set ALLOWED_HOSTS = env.list('ALLOWED_HOSTS') — never use ['*'] in production"
+      severity: critical

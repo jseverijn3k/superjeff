@@ -1,0 +1,69 @@
+{
+  "project_name": "expensio",
+  "description": "B2B SaaS multi-tenant expense management platform with approval workflows and accounting integrations",
+  "apps": [
+    {
+      "name": "accounts",
+      "responsibility": "User authentication, company tenancy, SSO, role and permission management",
+      "models": ["User", "Company", "Role", "Membership"],
+      "endpoints": ["/api/v1/auth/", "/api/v1/users/", "/api/v1/companies/"],
+      "dependencies": [],
+      "external_services": ["Google OAuth", "Microsoft OAuth"]
+    },
+    {
+      "name": "expenses",
+      "responsibility": "Expense report creation, line item management, receipt attachment, status lifecycle",
+      "models": ["ExpenseReport", "ExpenseItem", "Receipt", "Category"],
+      "endpoints": ["/api/v1/expenses/", "/api/v1/receipts/", "/api/v1/categories/"],
+      "dependencies": ["accounts"],
+      "external_services": ["S3"]
+    },
+    {
+      "name": "budgets",
+      "responsibility": "Budget definition per team and department, spending tracking, threshold alerts",
+      "models": ["Budget", "BudgetPeriod", "BudgetAllocation"],
+      "endpoints": ["/api/v1/budgets/"],
+      "dependencies": ["accounts"],
+      "external_services": []
+    },
+    {
+      "name": "approvals",
+      "responsibility": "Multi-step approval workflow engine, escalation rules, audit trail, rejection reasons",
+      "models": ["ApprovalFlow", "ApprovalStep", "ApprovalDecision"],
+      "endpoints": ["/api/v1/approvals/"],
+      "dependencies": ["accounts", "expenses"],
+      "external_services": []
+    },
+    {
+      "name": "payments",
+      "responsibility": "Reimbursement processing, payment status tracking, accounting system integration",
+      "models": ["Reimbursement", "Payment", "AccountingSync"],
+      "endpoints": ["/api/v1/payments/", "/api/v1/accounting/"],
+      "dependencies": ["accounts", "expenses", "approvals"],
+      "external_services": ["QuickBooks", "Xero"]
+    },
+    {
+      "name": "notifications",
+      "responsibility": "Email and in-app notification delivery for status changes and budget alerts",
+      "models": ["Notification", "NotificationPreference", "NotificationTemplate"],
+      "endpoints": ["/api/v1/notifications/"],
+      "dependencies": ["accounts"],
+      "external_services": ["SendGrid"]
+    },
+    {
+      "name": "reporting",
+      "responsibility": "Spending trend aggregation, CSV export, dashboard data endpoints",
+      "models": ["Report", "ReportSchedule"],
+      "endpoints": ["/api/v1/reports/", "/api/v1/exports/"],
+      "dependencies": ["accounts", "expenses", "budgets"],
+      "external_services": []
+    }
+  ],
+  "shared_infrastructure": {
+    "auth_strategy": "JWT with refresh tokens + SSO via social-auth-app-django",
+    "database": "PostgreSQL with row-level security per company",
+    "cache": "Redis",
+    "task_queue": "Celery + Redis",
+    "storage": "S3-compatible (receipts)"
+  }
+}

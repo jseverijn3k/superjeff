@@ -1,0 +1,81 @@
+name: security-instincts
+description: Behavioral rules for security enforcement across all generated code
+version: "1.0"
+applies_to: ["all-agents", "execution-layer", "hooks"]
+
+rules:
+
+  credentials:
+    - id: no_hardcoded_secrets
+      trigger: "any code generation involving keys, passwords, tokens"
+      rule: "Never hardcode secrets — always load from environment variables"
+      pattern: "os.environ.get('KEY') or django-environ env('KEY')"
+      severity: critical
+
+    - id: no_credentials_in_logs
+      trigger: "generating logging or error handling code"
+      rule: "Never log passwords, tokens, API keys, or PII"
+      severity: critical
+
+  inputs:
+    - id: validate_all_inputs
+      trigger: "generating any endpoint that accepts user input"
+      rule: "Validate every field in the serializer before processing"
+      severity: critical
+
+    - id: no_raw_sql
+      trigger: "generating any database query"
+      rule: "Never use raw SQL — use the Django ORM"
+      exception: "Only allowed with parameterized queries and explicit security review"
+      severity: critical
+
+    - id: no_mass_assignment
+      trigger: "generating any create or update view"
+      rule: "Never pass request.data directly to a model — always use a serializer"
+      severity: critical
+
+  authentication:
+    - id: jwt_expiry_required
+      trigger: "configuring JWT authentication"
+      rule: "Always set ACCESS_TOKEN_LIFETIME and REFRESH_TOKEN_LIFETIME"
+      severity: critical
+
+    - id: refresh_token_rotation
+      trigger: "configuring JWT with refresh tokens"
+      rule: "Enable ROTATE_REFRESH_TOKENS = True and BLACKLIST_AFTER_ROTATION = True"
+      severity: high
+
+    - id: password_reset_single_use
+      trigger: "generating password reset functionality"
+      rule: "Password reset tokens must be invalidated after first use"
+      severity: critical
+
+  file_handling:
+    - id: validate_file_types
+      trigger: "generating file upload endpoints"
+      rule: "Validate MIME type and extension on upload — never trust the client-provided content-type"
+      severity: critical
+
+    - id: no_user_controlled_paths
+      trigger: "generating file storage or retrieval code"
+      rule: "Never construct file paths from user input — use UUIDs"
+      severity: critical
+
+  cors:
+    - id: cors_explicit_origins
+      trigger: "configuring CORS"
+      rule: "Always use CORS_ALLOWED_ORIGINS with explicit list — never CORS_ALLOW_ALL_ORIGINS = True in production"
+      severity: critical
+
+  rate_limiting:
+    - id: rate_limit_auth
+      trigger: "generating authentication endpoints"
+      rule: "Apply rate limiting to login, registration, and password reset endpoints"
+      pattern: "Use django-ratelimit or DRF throttling classes"
+      severity: high
+
+  eval_exec:
+    - id: no_eval
+      trigger: "any code generation"
+      rule: "Never use eval() or exec() with any user-provided or dynamic input"
+      severity: critical

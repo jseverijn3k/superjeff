@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://superjeff/schemas/api_contract.json",
+  "title": "APIContract",
+  "description": "OpenAPI-compatible API contract derived from requirements output",
+  "type": "object",
+  "required": ["version", "app_name", "base_url", "auth", "endpoints"],
+  "properties": {
+    "version": { "type": "string" },
+    "app_name": { "type": "string" },
+    "base_url": { "type": "string" },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["JWT", "SessionAuth", "TokenAuth"] },
+        "token_header": { "type": "string" },
+        "token_prefix": { "type": "string" }
+      }
+    },
+    "endpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "method", "path", "auth_required", "request", "responses"],
+        "properties": {
+          "id": { "type": "string" },
+          "method": { "type": "string" },
+          "path": { "type": "string" },
+          "auth_required": { "type": "boolean" },
+          "description": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "request": {
+            "type": "object",
+            "properties": {
+              "content_type": { "type": "string" },
+              "body": { "type": "object" },
+              "path_params": { "type": "object" },
+              "query_params": { "type": "object" }
+            }
+          },
+          "responses": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string" },
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

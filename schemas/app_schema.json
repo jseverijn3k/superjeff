@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://superjeff/schemas/app_schema.json",
+  "title": "AppDecomposition",
+  "description": "Output schema for the Product Decomposition Agent",
+  "type": "object",
+  "required": ["project_name", "description", "apps", "shared_infrastructure"],
+  "properties": {
+    "project_name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Snake-case project identifier"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 10
+    },
+    "apps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "responsibility", "models", "endpoints", "dependencies", "external_services"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "responsibility": {
+            "type": "string",
+            "minLength": 10
+          },
+          "models": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[A-Z][a-zA-Z0-9]+$" },
+            "minItems": 1
+          },
+          "endpoints": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^/api/" },
+            "minItems": 1
+          },
+          "dependencies": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "external_services": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "shared_infrastructure": {
+      "type": "object",
+      "required": ["auth_strategy", "database", "cache", "task_queue", "storage"],
+      "properties": {
+        "auth_strategy": { "type": "string" },
+        "database": { "type": "string" },
+        "cache": { "type": "string" },
+        "task_queue": { "type": "string" },
+        "storage": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

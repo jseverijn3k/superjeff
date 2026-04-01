@@ -1,0 +1,40 @@
+name: bc_to_apps
+description: Transform a free-text business case into a validated Django app decomposition
+version: "1.0"
+
+input:
+  business_case:
+    type: string
+    required: true
+    description: Free-text description of the product to be built
+
+stages:
+  - id: decompose
+    name: Product Decomposition
+    agent: agents/product/decomposition-agent.md
+    input:
+      business_case: "{{ input.business_case }}"
+    output:
+      schema: schemas/app_schema.json
+      artifact: artifacts/decomposition.json
+    on_failure: halt
+
+  - id: validate_schema
+    name: Schema Validation
+    action: validate_json
+    input:
+      file: artifacts/decomposition.json
+      schema: schemas/app_schema.json
+    on_failure: halt
+
+  - id: check_circular_deps
+    name: Circular Dependency Check
+    action: check_circular_dependencies
+    input:
+      apps: "{{ stages.decompose.output.apps }}"
+    on_failure: halt
+
+output:
+  artifact: artifacts/decomposition.json
+  schema: schemas/app_schema.json
+  next_workflow: app_to_requirements

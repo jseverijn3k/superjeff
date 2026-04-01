@@ -1,0 +1,103 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "id": "superjeff:init",
+        "matcher": "*",
+        "description": "Load instincts and validate artifacts directory on session start",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mkdir -p artifacts/requirements artifacts/contracts artifacts/plans artifacts/tests artifacts/code artifacts/reports && echo 'SuperJeff artifacts directory ready'",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "id": "security:no-verify-guard",
+        "matcher": "Bash",
+        "description": "Block git --no-verify bypass of pre-commit hooks",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -q '\\-\\-no-verify'; then echo 'BLOCKED: --no-verify is not allowed. Fix the underlying issue instead.' && exit 1; fi",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      },
+      {
+        "id": "security:no-force-push-main",
+        "matcher": "Bash",
+        "description": "Block force push to main or master branch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'git push.*--force.*(main|master)|git push.*-f.*(main|master)'; then echo 'BLOCKED: Force push to main/master is not allowed.' && exit 1; fi",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      },
+      {
+        "id": "security:no-eval-exec",
+        "matcher": "Write",
+        "description": "Warn when writing eval() or exec() into Python files",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'eval\\(|exec\\('; then echo 'WARNING: eval/exec detected in generated code. Security review required.'; fi",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      },
+      {
+        "id": "security:no-hardcoded-secrets",
+        "matcher": "Write",
+        "description": "Warn when writing hardcoded secrets into Python files",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qiE 'secret_key\\s*=\\s*[\"\\x27][A-Za-z0-9]|password\\s*=\\s*[\"\\x27][A-Za-z0-9]|api_key\\s*=\\s*[\"\\x27][A-Za-z0-9]'; then echo 'BLOCKED: Hardcoded secret detected. Use environment variables.' && exit 1; fi",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "id": "superjeff:validate-json-output",
+        "matcher": "Write",
+        "description": "Validate JSON files written to artifacts/ against their schemas",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_RESULT_PATH\" | grep -q 'artifacts/'; then python -m json.tool \"$CLAUDE_TOOL_RESULT_PATH\" > /dev/null 2>&1 || echo \"WARNING: Invalid JSON written to $CLAUDE_TOOL_RESULT_PATH\"; fi",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "id": "superjeff:pipeline-state-persist",
+        "matcher": "*",
+        "description": "Persist pipeline state on session end",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f artifacts/pipeline_state.json ]; then cp artifacts/pipeline_state.json artifacts/pipeline_state.$(date +%Y%m%d_%H%M%S).bak; fi",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,54 @@
+name: app_to_requirements
+description: Transform a single app definition into a fully-specified, implementation-ready requirements document
+version: "1.0"
+
+input:
+  app_definition:
+    type: object
+    required: true
+    description: A single app object from the bc_to_apps output
+    schema: schemas/app_schema.json#/properties/apps/items
+
+stages:
+  - id: specify
+    name: Requirements Specification
+    agent: agents/requirements/requirements-agent.md
+    input:
+      app: "{{ input.app_definition }}"
+    output:
+      schema: schemas/requirements_schema.json
+      artifact: "artifacts/requirements/{{ input.app_definition.name }}.json"
+    on_failure: halt
+
+  - id: validate_schema
+    name: Schema Validation
+    action: validate_json
+    input:
+      file: "artifacts/requirements/{{ input.app_definition.name }}.json"
+      schema: schemas/requirements_schema.json
+    on_failure: halt
+
+  - id: check_test_coverage
+    name: Minimum Test Coverage Check
+    action: check_minimum_tests
+    rules:
+      - each_endpoint_has_min_5_tests: true
+      - each_business_rule_has_edge_case: true
+    input:
+      requirements: "{{ stages.specify.output }}"
+    on_failure: warn
+
+  - id: generate_api_contract
+    name: API Contract Generation
+    action: generate_api_contract
+    input:
+      requirements: "{{ stages.specify.output }}"
+    output:
+      schema: schemas/api_contract.json
+      artifact: "artifacts/contracts/{{ input.app_definition.name }}_contract.json"
+    on_failure: warn
+
+output:
+  requirements: "artifacts/requirements/{{ input.app_definition.name }}.json"
+  api_contract: "artifacts/contracts/{{ input.app_definition.name }}_contract.json"
+  next_workflow: build_pipeline

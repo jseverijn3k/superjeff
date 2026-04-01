@@ -1,0 +1,101 @@
+name: testing-instincts
+description: Behavioral rules for test generation and TDD enforcement
+version: "1.0"
+applies_to: ["execution-layer", "quality-agent"]
+
+rules:
+
+  tdd_cycle:
+    - id: red_before_green
+      trigger: "starting any implementation task"
+      rule: "Write the failing test BEFORE writing the implementation"
+      enforcement: "pipeline will not proceed to implement stage until test files exist"
+      severity: critical
+
+    - id: tests_must_fail_first
+      trigger: "after writing tests, before implementation"
+      rule: "Run pytest and confirm all new tests FAIL — if they pass, the test is wrong"
+      severity: critical
+
+    - id: all_tests_pass_before_review
+      trigger: "before requesting code review"
+      rule: "All tests must pass — no pending test failures allowed"
+      severity: critical
+
+  coverage:
+    - id: happy_path_required
+      trigger: "generating tests for any endpoint"
+      rule: "Include a success test: authenticated user, valid input, expected 2xx response"
+      severity: critical
+
+    - id: unauthenticated_required
+      trigger: "generating tests for any non-public endpoint"
+      rule: "Include a test with no auth token → expect 401"
+      severity: critical
+
+    - id: forbidden_required
+      trigger: "generating tests for any permission-controlled endpoint"
+      rule: "Include a test with wrong role/ownership → expect 403"
+      severity: critical
+
+    - id: invalid_input_required
+      trigger: "generating tests for any write endpoint"
+      rule: "Include a test with missing/invalid fields → expect 400"
+      severity: critical
+
+    - id: not_found_required
+      trigger: "generating tests for any endpoint with a resource ID"
+      rule: "Include a test with a nonexistent resource ID → expect 404"
+      severity: high
+
+    - id: edge_cases_per_business_rule
+      trigger: "generating tests for a requirement with business rules"
+      rule: "Include at least one edge case test per business rule"
+      severity: high
+
+    - id: failure_path_coverage
+      trigger: "generating tests for any workflow"
+      rule: "Include failure path tests: what happens when external services fail, DB constraints fire, etc."
+      severity: high
+
+  tooling:
+    - id: use_pytest
+      trigger: "generating any test file"
+      rule: "Use pytest with pytest-django — not unittest.TestCase"
+      severity: high
+
+    - id: use_factory_boy
+      trigger: "generating test fixtures"
+      rule: "Use factory_boy for model factories — not manual model.objects.create() in tests"
+      severity: medium
+
+    - id: use_faker
+      trigger: "generating test data"
+      rule: "Use Faker via factory_boy for realistic test data"
+      severity: low
+
+    - id: api_client
+      trigger: "generating API integration tests"
+      rule: "Use DRF's APIClient, not Django's test Client"
+      severity: medium
+
+  structure:
+    - id: test_file_naming
+      trigger: "generating test files"
+      rule: "Name test files test_<module>.py — e.g. test_models.py, test_views.py, test_serializers.py"
+      severity: medium
+
+    - id: test_function_naming
+      trigger: "generating test functions"
+      rule: "Name tests test_<action>_<scenario> — e.g. test_create_expense_success, test_create_expense_unauthenticated"
+      severity: medium
+
+    - id: test_isolation
+      trigger: "generating any test"
+      rule: "Each test must be independent — no shared mutable state between tests"
+      severity: high
+
+    - id: no_test_logic_in_fixtures
+      trigger: "generating test fixtures or factories"
+      rule: "Factories produce data only — no assertions or logic inside factories"
+      severity: medium

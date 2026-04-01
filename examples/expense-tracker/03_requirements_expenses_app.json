@@ -1,0 +1,266 @@
+{
+  "app_name": "expenses",
+  "models": [
+    {
+      "name": "Category",
+      "fields": [
+        { "name": "id", "type": "UUIDField", "options": { "primary_key": true, "default": "uuid.uuid4", "editable": false } },
+        { "name": "name", "type": "CharField", "options": { "max_length": 100 } },
+        { "name": "company", "type": "ForeignKey", "options": { "to": "accounts.Company", "on_delete": "CASCADE", "related_name": "categories" } },
+        { "name": "created_at", "type": "DateTimeField", "options": { "auto_now_add": true } },
+        { "name": "updated_at", "type": "DateTimeField", "options": { "auto_now": true } }
+      ],
+      "meta": {
+        "ordering": ["name"],
+        "indexes": ["company"],
+        "constraints": ["unique_together: [company, name]"]
+      },
+      "str_method": "return self.name",
+      "methods": []
+    },
+    {
+      "name": "ExpenseReport",
+      "fields": [
+        { "name": "id", "type": "UUIDField", "options": { "primary_key": true, "default": "uuid.uuid4", "editable": false } },
+        { "name": "title", "type": "CharField", "options": { "max_length": 255 } },
+        { "name": "owner", "type": "ForeignKey", "options": { "to": "accounts.User", "on_delete": "CASCADE", "related_name": "expense_reports" } },
+        { "name": "company", "type": "ForeignKey", "options": { "to": "accounts.Company", "on_delete": "CASCADE", "related_name": "expense_reports" } },
+        { "name": "status", "type": "CharField", "options": { "max_length": 20, "choices": [["draft", "Draft"], ["submitted", "Submitted"], ["approved", "Approved"], ["rejected", "Rejected"], ["paid", "Paid"]], "default": "draft" } },
+        { "name": "submitted_at", "type": "DateTimeField", "options": { "null": true, "blank": true } },
+        { "name": "notes", "type": "TextField", "options": { "blank": true, "default": "" } },
+        { "name": "created_at", "type": "DateTimeField", "options": { "auto_now_add": true } },
+        { "name": "updated_at", "type": "DateTimeField", "options": { "auto_now": true } }
+      ],
+      "meta": {
+        "ordering": ["-created_at"],
+        "indexes": ["owner", "company", "status"],
+        "constraints": []
+      },
+      "str_method": "return f'{self.title} ({self.owner.email})'",
+      "methods": ["get_total_amount", "submit", "can_be_submitted"]
+    },
+    {
+      "name": "ExpenseItem",
+      "fields": [
+        { "name": "id", "type": "UUIDField", "options": { "primary_key": true, "default": "uuid.uuid4", "editable": false } },
+        { "name": "report", "type": "ForeignKey", "options": { "to": "ExpenseReport", "on_delete": "CASCADE", "related_name": "items" } },
+        { "name": "category", "type": "ForeignKey", "options": { "to": "Category", "on_delete": "PROTECT", "related_name": "items" } },
+        { "name": "description", "type": "CharField", "options": { "max_length": 500 } },
+        { "name": "amount", "type": "DecimalField", "options": { "max_digits": 10, "decimal_places": 2 } },
+        { "name": "expense_date", "type": "DateField", "options": {} },
+        { "name": "created_at", "type": "DateTimeField", "options": { "auto_now_add": true } },
+        { "name": "updated_at", "type": "DateTimeField", "options": { "auto_now": true } }
+      ],
+      "meta": {
+        "ordering": ["expense_date"],
+        "indexes": ["report", "category"],
+        "constraints": []
+      },
+      "str_method": "return f'{self.description}: {self.amount}'",
+      "methods": []
+    }
+  ],
+  "serializers": [
+    {
+      "name": "CategorySerializer",
+      "model": "Category",
+      "fields": ["id", "name", "created_at"],
+      "read_only_fields": ["id", "created_at"],
+      "validators": ["validate_name_unique_per_company"],
+      "nested_serializers": []
+    },
+    {
+      "name": "ExpenseItemSerializer",
+      "model": "ExpenseItem",
+      "fields": ["id", "category", "description", "amount", "expense_date", "created_at"],
+      "read_only_fields": ["id", "created_at"],
+      "validators": ["validate_amount_positive", "validate_expense_date_not_future"],
+      "nested_serializers": ["CategorySerializer"]
+    },
+    {
+      "name": "ExpenseReportListSerializer",
+      "model": "ExpenseReport",
+      "fields": ["id", "title", "status", "submitted_at", "created_at", "updated_at"],
+      "read_only_fields": ["id", "status", "submitted_at", "created_at", "updated_at"],
+      "validators": [],
+      "nested_serializers": []
+    },
+    {
+      "name": "ExpenseReportDetailSerializer",
+      "model": "ExpenseReport",
+      "fields": ["id", "title", "status", "notes", "submitted_at", "created_at", "updated_at", "items", "total_amount"],
+      "read_only_fields": ["id", "status", "submitted_at", "created_at", "updated_at", "total_amount"],
+      "validators": ["validate_title_not_empty"],
+      "nested_serializers": ["ExpenseItemSerializer"]
+    }
+  ],
+  "views": [
+    {
+      "name": "ExpenseReportViewSet",
+      "type": "ViewSet",
+      "model": "ExpenseReport",
+      "serializer": "ExpenseReportDetailSerializer",
+      "http_methods": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+      "permission_classes": ["IsAuthenticated", "IsCompanyMember"],
+      "authentication_classes": ["JWTAuthentication"],
+      "filters": ["status", "created_at"],
+      "pagination": "PageNumberPagination"
+    },
+    {
+      "name": "ExpenseReportSubmitView",
+      "type": "APIView",
+      "model": "ExpenseReport",
+      "serializer": "ExpenseReportDetailSerializer",
+      "http_methods": ["POST"],
+      "permission_classes": ["IsAuthenticated", "IsOwner"],
+      "authentication_classes": ["JWTAuthentication"],
+      "filters": [],
+      "pagination": null
+    }
+  ],
+  "permissions": [
+    {
+      "name": "IsCompanyMember",
+      "rule": "request.user.company == obj.company"
+    },
+    {
+      "name": "IsOwner",
+      "rule": "request.user == obj.owner"
+    }
+  ],
+  "business_rules": [
+    {
+      "rule_id": "BR001",
+      "description": "An expense report can only be submitted if it has at least one item",
+      "applies_to": "ExpenseReport",
+      "enforcement": "model",
+      "condition": "report.items.count() == 0",
+      "action": "raise ValidationError('Cannot submit an empty expense report')"
+    },
+    {
+      "rule_id": "BR002",
+      "description": "Only draft reports can be submitted",
+      "applies_to": "ExpenseReport",
+      "enforcement": "view",
+      "condition": "report.status != 'draft'",
+      "action": "raise ValidationError('Only draft reports can be submitted')"
+    },
+    {
+      "rule_id": "BR003",
+      "description": "Expense items cannot have future dates",
+      "applies_to": "ExpenseItem",
+      "enforcement": "serializer",
+      "condition": "expense_date > date.today()",
+      "action": "raise ValidationError('Expense date cannot be in the future')"
+    },
+    {
+      "rule_id": "BR004",
+      "description": "Expense amounts must be positive",
+      "applies_to": "ExpenseItem",
+      "enforcement": "serializer",
+      "condition": "amount <= 0",
+      "action": "raise ValidationError('Amount must be greater than zero')"
+    }
+  ],
+  "api_endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/v1/expenses/",
+      "view": "ExpenseReportViewSet.list",
+      "auth_required": true,
+      "request_schema": {},
+      "response_schema": { "count": "int", "results": "[ExpenseReportListSerializer]" },
+      "status_codes": { "200": "OK", "401": "Unauthorized" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/expenses/",
+      "view": "ExpenseReportViewSet.create",
+      "auth_required": true,
+      "request_schema": { "title": "string", "notes": "string?" },
+      "response_schema": { "ExpenseReportDetailSerializer": {} },
+      "status_codes": { "201": "Created", "400": "Bad Request", "401": "Unauthorized" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/expenses/{id}/submit/",
+      "view": "ExpenseReportSubmitView",
+      "auth_required": true,
+      "request_schema": {},
+      "response_schema": { "ExpenseReportDetailSerializer": {} },
+      "status_codes": { "200": "OK", "400": "Validation Error", "401": "Unauthorized", "403": "Forbidden", "404": "Not Found" }
+    }
+  ],
+  "signals": [
+    {
+      "signal": "post_save",
+      "sender": "ExpenseReport",
+      "action": "Send notification when status changes to submitted, approved, or rejected"
+    }
+  ],
+  "test_cases": [
+    {
+      "test_id": "TC001",
+      "description": "Authenticated user can list their own expense reports",
+      "type": "integration",
+      "setup": "Create user, authenticate, create 3 expense reports owned by user",
+      "action": "GET /api/v1/expenses/",
+      "assertion": "status_code == 200, count == 3",
+      "edge_case": false
+    },
+    {
+      "test_id": "TC002",
+      "description": "Unauthenticated request returns 401",
+      "type": "integration",
+      "setup": "No authentication",
+      "action": "GET /api/v1/expenses/",
+      "assertion": "status_code == 401",
+      "edge_case": false
+    },
+    {
+      "test_id": "TC003",
+      "description": "User cannot see another company's expense reports",
+      "type": "integration",
+      "setup": "Create two companies with one user each. Create expense report for company B.",
+      "action": "GET /api/v1/expenses/ as company A user",
+      "assertion": "status_code == 200, count == 0",
+      "edge_case": true
+    },
+    {
+      "test_id": "TC004",
+      "description": "Cannot submit empty expense report (BR001)",
+      "type": "integration",
+      "setup": "Create expense report with no items",
+      "action": "POST /api/v1/expenses/{id}/submit/",
+      "assertion": "status_code == 400, error mentions 'empty'",
+      "edge_case": true
+    },
+    {
+      "test_id": "TC005",
+      "description": "Cannot submit already-submitted report (BR002)",
+      "type": "integration",
+      "setup": "Create expense report with status=submitted",
+      "action": "POST /api/v1/expenses/{id}/submit/",
+      "assertion": "status_code == 400, error mentions 'draft'",
+      "edge_case": true
+    },
+    {
+      "test_id": "TC006",
+      "description": "Expense item with future date is rejected (BR003)",
+      "type": "integration",
+      "setup": "Create expense report in draft",
+      "action": "POST /api/v1/expenses/{id}/items/ with expense_date = tomorrow",
+      "assertion": "status_code == 400, error on expense_date field",
+      "edge_case": true
+    },
+    {
+      "test_id": "TC007",
+      "description": "Expense item with zero amount is rejected (BR004)",
+      "type": "integration",
+      "setup": "Create expense report in draft",
+      "action": "POST /api/v1/expenses/{id}/items/ with amount = 0",
+      "assertion": "status_code == 400, error on amount field",
+      "edge_case": true
+    }
+  ]
+}

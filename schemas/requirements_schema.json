@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://superjeff/schemas/requirements_schema.json",
+  "title": "AppRequirements",
+  "description": "Output schema for the Requirements Agent",
+  "type": "object",
+  "required": ["app_name", "models", "serializers", "views", "permissions", "business_rules", "api_endpoints", "test_cases"],
+  "properties": {
+    "app_name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "fields", "meta", "str_method"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Z][a-zA-Z0-9]+$" },
+          "fields": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["name", "type", "options"],
+              "properties": {
+                "name": { "type": "string" },
+                "type": { "type": "string" },
+                "options": { "type": "object" }
+              }
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "ordering": { "type": "array", "items": { "type": "string" } },
+              "indexes": { "type": "array", "items": { "type": "string" } },
+              "constraints": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "str_method": { "type": "string" },
+          "methods": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "serializers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "model", "fields"],
+        "properties": {
+          "name": { "type": "string" },
+          "model": { "type": "string" },
+          "fields": { "type": "array", "items": { "type": "string" } },
+          "read_only_fields": { "type": "array", "items": { "type": "string" } },
+          "validators": { "type": "array", "items": { "type": "string" } },
+          "nested_serializers": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "model", "serializer", "http_methods", "permission_classes", "authentication_classes"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["ViewSet", "APIView", "GenericAPIView"] },
+          "model": { "type": "string" },
+          "serializer": { "type": "string" },
+          "http_methods": { "type": "array", "items": { "type": "string" } },
+          "permission_classes": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "authentication_classes": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "filters": { "type": "array", "items": { "type": "string" } },
+          "pagination": { "type": "string" }
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "rule"],
+        "properties": {
+          "name": { "type": "string" },
+          "rule": { "type": "string" }
+        }
+      }
+    },
+    "business_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule_id", "description", "applies_to", "enforcement", "condition", "action"],
+        "properties": {
+          "rule_id": { "type": "string" },
+          "description": { "type": "string" },
+          "applies_to": { "type": "string" },
+          "enforcement": { "type": "string", "enum": ["model", "serializer", "view", "signal"] },
+          "condition": { "type": "string" },
+          "action": { "type": "string" }
+        }
+      }
+    },
+    "api_endpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["method", "path", "view", "auth_required"],
+        "properties": {
+          "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+          "path": { "type": "string" },
+          "view": { "type": "string" },
+          "auth_required": { "type": "boolean" },
+          "request_schema": { "type": "object" },
+          "response_schema": { "type": "object" },
+          "status_codes": { "type": "object" }
+        }
+      }
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["signal", "sender", "action"],
+        "properties": {
+          "signal": { "type": "string", "enum": ["post_save", "pre_save", "post_delete", "pre_delete"] },
+          "sender": { "type": "string" },
+          "action": { "type": "string" }
+        }
+      }
+    },
+    "test_cases": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["test_id", "description", "type", "setup", "action", "assertion"],
+        "properties": {
+          "test_id": { "type": "string" },
+          "description": { "type": "string" },
+          "type": { "type": "string", "enum": ["unit", "integration", "e2e"] },
+          "setup": { "type": "string" },
+          "action": { "type": "string" },
+          "assertion": { "type": "string" },
+          "edge_case": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

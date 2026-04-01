@@ -1,0 +1,95 @@
+name: build_pipeline
+description: Full TDD build pipeline from requirements to validated, production-ready Django app code
+version: "1.0"
+
+input:
+  app_name:
+    type: string
+    required: true
+  requirements_artifact:
+    type: string
+    required: true
+    description: Path to the requirements JSON artifact
+
+stages:
+  - id: plan
+    name: Implementation Planning
+    description: Break requirements into ordered implementation tasks
+    action: generate_task_list
+    input:
+      requirements: "{{ input.requirements_artifact }}"
+    output:
+      artifact: "artifacts/plans/{{ input.app_name }}_plan.json"
+    rules:
+      - tasks_ordered_by_dependency: true
+      - models_before_serializers: true
+      - serializers_before_views: true
+      - views_before_urls: true
+      - tests_written_before_implementation: true
+
+  - id: write_tests
+    name: Write Failing Tests (RED)
+    description: Generate pytest test files from test_cases in requirements
+    action: generate_test_files
+    input:
+      requirements: "{{ input.requirements_artifact }}"
+      plan: "{{ stages.plan.output }}"
+    output:
+      artifact: "artifacts/tests/{{ input.app_name }}/"
+    rules:
+      - all_tests_must_fail_before_implementation: true
+      - use_pytest_and_django_test_client: true
+      - use_factory_boy_for_fixtures: true
+
+  - id: implement
+    name: Implement to Pass Tests (GREEN)
+    description: Generate Django app code that makes all tests pass
+    action: generate_django_app
+    input:
+      requirements: "{{ input.requirements_artifact }}"
+      tests: "{{ stages.write_tests.output }}"
+    output:
+      artifact: "artifacts/code/{{ input.app_name }}/"
+    rules:
+      - implement_models_first: true
+      - run_makemigrations_after_models: true
+      - all_tests_must_pass_after_implementation: true
+
+  - id: refactor
+    name: Refactor (REFACTOR)
+    description: Review and improve code quality without breaking tests
+    agent: agents/quality/quality-agent.md
+    input:
+      code: "{{ stages.implement.output }}"
+      requirements: "{{ input.requirements_artifact }}"
+    output:
+      report: "artifacts/reports/{{ input.app_name }}_quality.json"
+    on_failure: halt_on_critical
+
+  - id: security_review
+    name: Security Review
+    agent: agents/security/security-agent.md
+    input:
+      code: "{{ stages.implement.output }}"
+    output:
+      report: "artifacts/reports/{{ input.app_name }}_security.json"
+    on_failure: halt_on_critical
+
+  - id: validate
+    name: Final Validation
+    action: run_all_checks
+    input:
+      code: "{{ stages.implement.output }}"
+      quality_report: "{{ stages.refactor.output.report }}"
+      security_report: "{{ stages.security_review.output.report }}"
+    gates:
+      - all_tests_pass: true
+      - no_critical_quality_findings: true
+      - no_critical_security_findings: true
+      - migrations_present: true
+
+output:
+  code: "artifacts/code/{{ input.app_name }}/"
+  quality_report: "artifacts/reports/{{ input.app_name }}_quality.json"
+  security_report: "artifacts/reports/{{ input.app_name }}_security.json"
+  status: "{{ stages.validate.status }}"
