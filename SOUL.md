@@ -43,7 +43,7 @@ SuperJeff uses git as the audit trail for the pipeline. Every stage transition i
 
 | Type | When to use |
 | --- | --- |
-| `design` | After brainstorm design artifact is saved |
+| `design` | After brainstorm design artifact OR UX spec is saved |
 | `decompose` | After Product Decomposition Agent produces app list |
 | `specify` | After Requirements Agent produces app spec |
 | `audit` | After Audit Agent produces spec + gap report (conform pipeline) |
@@ -97,7 +97,10 @@ Product Decomposition       [Product Decomposition Agent]
      ↓  git commit: decompose(<project>)
 App Requirements            [Requirements Agent × N apps]
      ↓  git commit: specify(<app>) per app
-Implementation Plan         [Planning Skill — 2-5 min tasks, exact code, verify cmds]
+UX Design                   [/superjeff:design — UX Skill + Frontend Agent]
+     ↓  git commit: design(<app>)   → artifacts/ux/<app>_ux_spec.json
+     ↓  design tokens, pages, components, HTMX patterns, accessibility
+Implementation Plan         [Planning Skill — 2-5 min tasks: backend + frontend]
      ↓  git commit: plan(<app>)
 TDD — Write Failing Tests   [Testing Skill — pytest + factory_boy]
      ↓  git commit: test(<app>)   ← all tests confirmed FAILING
@@ -138,6 +141,34 @@ Quality + Security Audit
      ↓  git commit: validate(<app>): conform complete
      ↓
 App conforms → continue with Pipeline A for new features
+```
+
+## Pipeline C — Existing UI (conform_ui_pipeline)
+
+```text
+Existing Django Templates (working UI, no design system)
+     ↓
+/superjeff:conform-ui <app> [UI Audit Agent]
+     ↓  git commit: audit(<app>): UI audit — templates, CSS, HTMX, gap report
+Review UI Gaps              Surface critical + high gaps — user acknowledges
+Design Tokens               Define token system from existing palette → tokens.css
+     ↓  git commit: design(<app>): design token system
+Base Template               Fix/create base.html — skip link, landmarks, HTMX
+     ↓  git commit: design(<app>): base template
+Accessibility Critical      Fix missing labels, alt, keyboard nav (critical gaps)
+     ↓  git commit: design(<app>): fix critical accessibility gaps
+Empty + Loading States      Add empty states to all lists, hx-indicator everywhere
+     ↓  git commit: design(<app>): empty states and loading indicators
+HTMX Migration              Replace JS/full-page reloads with HTMX patterns
+     ↓  git commit: design(<app>): migrate <feature> from JS to HTMX (per task)
+Component Extraction        Extract reusable HTML to named partials
+     ↓  git commit: design(<app>): extract reusable partials
+Token Application           Replace hardcoded values with var(--token) references
+     ↓  git commit: design(<app>): apply design tokens
+Verify + Validate
+     ↓  git commit: validate(<app>): UI conform complete
+     ↓
+UI conforms → continue with /superjeff:design for new feature UI
 ```
 
 ---

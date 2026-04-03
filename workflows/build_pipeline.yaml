@@ -1,6 +1,6 @@
 name: build_pipeline
-description: Full TDD build pipeline from requirements to validated, production-ready Django app code
-version: "2.0"
+description: Full TDD build pipeline from requirements to validated, production-ready Django app code — backend and frontend (Django templates + HTMX)
+version: "3.0"
 
 input:
   app_name:
@@ -15,6 +15,11 @@ input:
     required: false
     description: Path to artifacts/specs/YYYY-MM-DD-<feature>.md — produced by /superjeff:brainstorm
     warning_if_missing: "No design artifact found. Run /superjeff:brainstorm first for new features."
+  ux_spec:
+    type: string
+    required: false
+    description: Path to artifacts/ux/<app>_ux_spec.json — produced by /superjeff:design
+    warning_if_missing: "No UX spec found. Run /superjeff:design <app> to include frontend implementation tasks."
 
 stages:
   - id: check_design
@@ -25,6 +30,29 @@ stages:
       file: "{{ input.design_artifact }}"
     on_missing: warn
     # Does not halt — allows bug fixes and minor additions to skip brainstorm
+
+  - id: ux_design
+    name: UX Design (Django Templates + HTMX)
+    description: >
+      Produce the UX spec for this app: design tokens, page inventory, component library,
+      HTMX interaction patterns, forms, and accessibility baseline.
+      This stage runs only if ux_spec input is not provided.
+      If artifacts/ux/<app>_ux_spec.json already exists, load it and extend it.
+      See skills/ux-design/SKILL.md and agents/frontend/frontend-agent.md.
+      Output: artifacts/ux/<app>_ux_spec.json
+      The plan stage (next) will include both backend AND frontend implementation tasks
+      when this artifact exists.
+    skill: skills/ux-design/SKILL.md
+    run_if: "{{ not input.ux_spec }}"
+    input:
+      requirements: "{{ input.requirements_artifact }}"
+      design: "{{ input.design_artifact }}"
+      app_name: "{{ input.app_name }}"
+    output:
+      artifact: "artifacts/ux/{{ input.app_name }}_ux_spec.json"
+    git_commit: "design({{ input.app_name }}): UX spec — design tokens, pages, components, HTMX patterns"
+    on_failure: warn
+    # Does not halt — backend-only apps can skip UX spec
 
   - id: plan
     name: Implementation Planning
@@ -55,11 +83,18 @@ stages:
           - urls
           - signals
           - verify_green
+          - base_template
+          - design_tokens_css
+          - page_templates
+          - htmx_partials
+          - component_states
+          - accessibility
       - every_task_has_exact_file_path: true
       - every_task_has_complete_code: true
       - every_task_has_verify_command: true
       - every_task_has_commit_message: true
       - tests_before_implementations: true
+      - frontend_tasks_only_if_ux_spec_exists: true
     on_failure: halt
 
   - id: write_tests
@@ -188,10 +223,16 @@ stages:
       - migrations_present: true
       - no_cbv_or_viewset: true
       - no_direct_orm_in_views: true
+      - if_ux_spec_exists:
+          - all_htmx_requests_have_indicator: true
+          - all_htmx_regions_have_aria_live: true
+          - design_tokens_applied: true
+          - all_pages_have_4_states: true
 
 output:
   code: "artifacts/code/{{ input.app_name }}/"
   plan: "artifacts/plans/{{ input.app_name }}_plan.md"
+  ux_spec: "artifacts/ux/{{ input.app_name }}_ux_spec.json"
   quality_report: "artifacts/reports/{{ input.app_name }}_quality.json"
   security_report: "artifacts/reports/{{ input.app_name }}_security.json"
   status: "{{ stages.validate.status }}"

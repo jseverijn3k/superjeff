@@ -1,0 +1,294 @@
+name: conform_ui_pipeline
+description: >
+  Bring existing Django templates into conformance with SuperJeff UI standards.
+  Works on apps that have working templates but lack design tokens, proper HTMX
+  patterns, empty/loading states, or accessibility baseline.
+  After conform-ui completes, the app's UI is ready for new feature design via /superjeff:design.
+version: "1.0"
+stack: "django-templates + htmx + vanilla-js"
+
+input:
+  app_name:
+    type: string
+    required: true
+    description: Name of the existing Django app to conform
+  templates_path:
+    type: string
+    required: true
+    description: "Path to the app's templates, e.g. templates/expenses/ or apps/expenses/templates/"
+  static_path:
+    type: string
+    required: false
+    description: "Path to the app's static files, e.g. static/expenses/"
+    default: "static/{{ input.app_name }}/"
+
+stages:
+  - id: ui_audit
+    name: Audit Existing Templates
+    description: >
+      Read all existing templates, CSS, and JS files.
+      Produce three artifacts:
+      1. Reverse-engineered UX spec (what the UI currently is)
+      2. Design gap report (what doesn't conform to SuperJeff UI standards)
+      3. UI refactor plan (ordered tasks)
+      See agents/ui-audit/ui-audit-agent.md.
+      MUST read everything before forming opinions. MUST NOT suggest fixes during audit.
+    agent: agents/ui-audit/ui-audit-agent.md
+    input:
+      app_name: "{{ input.app_name }}"
+      templates_path: "{{ input.templates_path }}"
+      static_path: "{{ input.static_path }}"
+    output:
+      existing_ux_spec: "artifacts/ux/{{ input.app_name }}_existing_ux.json"
+      gap_report: "artifacts/reports/{{ input.app_name }}_ui_gaps.json"
+      refactor_plan: "artifacts/plans/{{ input.app_name }}_ui_refactor_plan.md"
+    git_commit: "audit({{ input.app_name }}): UI audit — existing templates, CSS, HTMX usage, gap report"
+    on_failure: halt
+
+  - id: review_ui_gaps
+    name: Review UI Gap Report
+    description: >
+      Surface the UI gap report to the user.
+      Critical gaps (missing form labels, no keyboard navigation, broken ARIA)
+      must be acknowledged before proceeding.
+      High gaps (no design tokens, hardcoded values, no empty states) should be
+      reviewed and prioritised.
+    action: surface_report
+    input:
+      report: "{{ stages.ui_audit.output.gap_report }}"
+    gates:
+      - no_unacknowledged_critical_gaps: true
+    on_failure: halt
+
+  - id: design_tokens
+    name: Define Design Token System
+    description: >
+      Based on existing visual language (colors found in CSS, fonts in use),
+      define a complete design token system for the app.
+      Save as artifacts/ux/<app>_design_tokens.json.
+      These tokens replace all hardcoded values in the templates and CSS.
+      See skills/ux-design/SKILL.md Step 2.
+      Rules:
+      - Derive from existing palette where possible (respect prior design intent)
+      - Check all colors for WCAG AA contrast (≥ 4.5:1 for text, ≥ 3:1 for UI)
+      - Define semantic names — never color1, color2
+      - Generate a CSS custom properties file: static/<app>/css/tokens.css
+    skill: skills/ux-design/SKILL.md
+    input:
+      existing_ux_spec: "{{ stages.ui_audit.output.existing_ux_spec }}"
+      gap_report: "{{ stages.ui_audit.output.gap_report }}"
+    output:
+      tokens_json: "artifacts/ux/{{ input.app_name }}_design_tokens.json"
+      tokens_css: "{{ input.static_path }}/css/tokens.css"
+    git_commit: "design({{ input.app_name }}): define design token system — colors, type, spacing"
+    on_failure: halt
+
+  - id: base_template
+    name: Establish Base Template
+    description: >
+      Fix or create the base template:
+      - Skip link as first child of <body>
+      - <main id="main-content"> landmark
+      - <nav> with aria-label
+      - HTMX script tag (if not present)
+      - Design tokens CSS file linked
+      - Toast notification region with aria-live="polite"
+      - Dynamic <title> block
+      If a base template exists, refactor it in place.
+      If no base template exists, create templates/base.html.
+    skill: skills/ux-design/SKILL.md
+    input:
+      existing_ux_spec: "{{ stages.ui_audit.output.existing_ux_spec }}"
+      design_tokens: "{{ stages.design_tokens.output.tokens_json }}"
+      templates_path: "{{ input.templates_path }}"
+    output:
+      base_template: "templates/base.html"
+    verify:
+      - command: "grep -n 'skip-link\\|Skip to' templates/base.html"
+        expected: "skip link present"
+      - command: "grep -n 'id=\"main-content\"' templates/base.html"
+        expected: "main landmark present"
+      - command: "grep -n 'htmx.org' templates/base.html"
+        expected: "HTMX script present"
+    git_commit: "design({{ input.app_name }}): base template — skip link, landmarks, HTMX, design tokens"
+    on_failure: halt
+
+  - id: accessibility_critical
+    name: Fix Critical Accessibility Gaps
+    description: >
+      Address all critical-severity gaps from the gap report.
+      Focus: missing form labels, missing alt attributes, non-keyboard-navigable
+      interactive elements, broken ARIA attributes.
+      Run accessibility check after each fix.
+      Do NOT change visual appearance — fix only the accessibility attribute.
+    skill: skills/ux-design/SKILL.md
+    input:
+      gap_report: "{{ stages.ui_audit.output.gap_report }}"
+      refactor_plan: "{{ stages.ui_audit.output.refactor_plan }}"
+      templates_path: "{{ input.templates_path }}"
+    filter_gaps:
+      severity: critical
+    verify:
+      - command: "grep -rn '<input' {{ input.templates_path }} | grep -v 'id='"
+        expected: "no output (all inputs have id for label association)"
+      - command: "grep -rn '<img' {{ input.templates_path }} | grep -v 'alt='"
+        expected: "no output (all images have alt)"
+    git_commit: "design({{ input.app_name }}): fix critical accessibility gaps"
+    on_failure: halt
+
+  - id: empty_and_loading_states
+    name: Add Empty States and Loading Indicators
+    description: >
+      For every list view or HTMX-swapped region:
+      1. Add an empty state (not a blank screen — show illustration or message + CTA)
+      2. Add a loading indicator (hx-indicator pointing to a spinner or skeleton)
+      3. Add aria-live="polite" to every HTMX-updated region
+      Template pattern for empty state:
+        {% if items %}
+          ... list ...
+        {% else %}
+          {% include "partials/empty_state.html" with message="No items yet" cta="Add your first item" %}
+        {% endif %}
+    skill: skills/ux-design/SKILL.md
+    input:
+      existing_ux_spec: "{{ stages.ui_audit.output.existing_ux_spec }}"
+      gap_report: "{{ stages.ui_audit.output.gap_report }}"
+      templates_path: "{{ input.templates_path }}"
+    verify:
+      - command: "grep -rn 'hx-get\\|hx-post' {{ input.templates_path }} | grep -v 'hx-indicator'"
+        expected: "no output (every HTMX request has hx-indicator)"
+      - command: "grep -rn 'aria-live' {{ input.templates_path }}"
+        expected: "at least one aria-live region per HTMX-updated section"
+    git_commit: "design({{ input.app_name }}): add empty states and loading indicators"
+    on_failure: halt
+
+  - id: htmx_migration
+    name: Migrate JS to HTMX
+    description: >
+      Replace jQuery/vanilla JS patterns with HTMX where applicable.
+      Common replacements:
+      - fetch() / $.ajax() for data → hx-get / hx-post
+      - Form submit via JS → hx-post with hx-target
+      - Show/hide panels on click → hx-get returning partial
+      - Search filtering via JS → hx-trigger="keyup changed delay:300ms"
+      - Delete with confirm dialog → hx-confirm attribute
+      Apply HTMX patterns from gap report medium-severity items.
+      Run full manual test after each replacement before committing.
+      Do NOT remove JS until HTMX replacement is verified working.
+    skill: skills/ux-design/SKILL.md
+    input:
+      gap_report: "{{ stages.ui_audit.output.gap_report }}"
+      refactor_plan: "{{ stages.ui_audit.output.refactor_plan }}"
+      templates_path: "{{ input.templates_path }}"
+      static_path: "{{ input.static_path }}"
+    filter_gaps:
+      category: js-replacement
+    git_commit_per_task: true
+    git_commit_format: "design({{ input.app_name }}): migrate <feature> from JS to HTMX"
+    on_failure: halt
+
+  - id: component_extraction
+    name: Extract Reusable Partials
+    description: >
+      Identify repeated HTML patterns and extract them to named partials.
+      Every partial that is returned by an HTMX endpoint MUST be a separate file
+      in templates/<app>/partials/.
+      Pattern:
+        templates/<app>/partials/
+          _expense_row.html
+          _expense_table.html
+          _empty_state.html
+          _loading_skeleton.html
+          _toast.html
+          _confirm_modal.html
+      Replace inline HTML with {% include %} calls.
+      Each partial gets aria-live and accessibility attributes if it's HTMX-swapped.
+    skill: skills/ux-design/SKILL.md
+    input:
+      existing_ux_spec: "{{ stages.ui_audit.output.existing_ux_spec }}"
+      templates_path: "{{ input.templates_path }}"
+    git_commit: "design({{ input.app_name }}): extract reusable partials to templates/<app>/partials/"
+    on_failure: halt
+
+  - id: design_token_application
+    name: Apply Design Tokens to Templates and CSS
+    description: >
+      Replace all hardcoded color values, font sizes, spacing values in templates
+      and CSS with references to the design token CSS custom properties.
+      In CSS:  color: #2563EB  →  color: var(--color-primary)
+      In templates: class="text-blue-600"  →  class="text-primary" (if using utility CSS)
+      or inline style="color: #2563EB"  →  style="color: var(--color-primary)"
+      Do not change layout or visual appearance — only replace hardcoded values.
+    skill: skills/ux-design/SKILL.md
+    input:
+      design_tokens: "{{ stages.design_tokens.output.tokens_json }}"
+      templates_path: "{{ input.templates_path }}"
+      static_path: "{{ input.static_path }}"
+    verify:
+      - command: "grep -rn '#[0-9A-Fa-f]\\{6\\}' {{ input.static_path }}/css/ | grep -v tokens.css"
+        expected: "no output (no hardcoded hex colors outside tokens.css)"
+    git_commit: "design({{ input.app_name }}): apply design tokens — replace hardcoded values"
+    on_failure: halt
+
+  - id: architecture_verification
+    name: UI Architecture Verification Gate
+    description: >
+      Confirm all critical and high gaps are resolved.
+      Run automated checks.
+    skill: skills/verification/SKILL.md
+    input:
+      templates_path: "{{ input.templates_path }}"
+      gap_report: "{{ stages.ui_audit.output.gap_report }}"
+    verify:
+      - command: "grep -rn 'hx-get\\|hx-post\\|hx-put\\|hx-delete' {{ input.templates_path }} | grep -v 'hx-indicator'"
+        expected: "no output (all HTMX requests have hx-indicator)"
+      - command: "grep -rn 'aria-live' {{ input.templates_path }}"
+        expected: "at least one match per HTMX-updated section"
+      - command: "grep -n 'id=\"main-content\"' templates/base.html"
+        expected: "main landmark present"
+      - command: "grep -rn '<input' {{ input.templates_path }} | grep -v 'id=' | grep -v 'type=\"hidden\"'"
+        expected: "no output (all visible inputs have id)"
+    on_failure: halt
+
+  - id: quality_audit
+    name: UI Quality Audit
+    description: >
+      Final quality check for the UI:
+      - All pages have 4 states implemented (loading, empty, error, populated)
+      - All forms have proper labels and error display
+      - Template inheritance is consistent (all pages extend base.html or a layout)
+      - No inline styles (all via tokens.css or utility classes)
+      - No unused partials or dead CSS
+      - HTMX version pinned (not @latest)
+    skill: skills/ux-design/SKILL.md
+    input:
+      templates_path: "{{ input.templates_path }}"
+      gap_report: "{{ stages.ui_audit.output.gap_report }}"
+    output:
+      report: "artifacts/reports/{{ input.app_name }}_ui_quality.json"
+    on_failure: halt_on_critical
+
+  - id: validate
+    name: Final UI Conform Validation
+    action: run_all_checks
+    input:
+      gap_report: "{{ stages.ui_audit.output.gap_report }}"
+      quality_report: "{{ stages.quality_audit.output.report }}"
+    gates:
+      - all_critical_gaps_resolved: true
+      - all_high_gaps_resolved: true
+      - design_tokens_defined: true
+      - base_template_has_skip_link: true
+      - base_template_has_main_landmark: true
+      - all_htmx_requests_have_indicator: true
+      - all_htmx_regions_have_aria_live: true
+      - no_hardcoded_colors_in_css: true
+    git_commit: "validate({{ input.app_name }}): UI conform complete — design tokens, HTMX, accessibility baseline"
+
+output:
+  existing_ux_spec: "artifacts/ux/{{ input.app_name }}_existing_ux.json"
+  design_tokens: "artifacts/ux/{{ input.app_name }}_design_tokens.json"
+  gap_report: "artifacts/reports/{{ input.app_name }}_ui_gaps.json"
+  quality_report: "artifacts/reports/{{ input.app_name }}_ui_quality.json"
+  status: "{{ stages.validate.status }}"
+  next_workflow: "build_pipeline (design stage) — app UI is now conform and ready for /superjeff:design <app>"

@@ -17,10 +17,12 @@ Business Case (free text)
         ↓
   /superjeff:specify <app>     ← models, services, views, tests spec (JSON)
         ↓
+  /superjeff:design <app>      ← UX spec: design tokens, pages, HTMX patterns, accessibility
+        ↓
   /superjeff:build <app>
-        ├─ Plan               ← 2-5 min tasks, exact code, verify commands
+        ├─ Plan               ← 2-5 min tasks: backend + frontend, exact code, verify commands
         ├─ RED                ← failing tests (pytest + factory_boy)
-        ├─ GREEN              ← implement task-by-task, verify after each
+        ├─ GREEN              ← implement task-by-task (models → services → views → templates)
         ├─ Code Review        ← spec compliance + architecture check
         ├─ Verification Gate  ← fresh pytest + grep, evidence required
         ├─ Quality Audit      ← 5-gate Quality Agent report
@@ -28,7 +30,7 @@ Business Case (free text)
         ↓
   /superjeff:validate          ← final gate across all apps
         ↓
-  Production-Ready Django App
+  Production-Ready Django App (backend + HTMX frontend)
 ```
 
 **For existing repos (working code, no tests):**
@@ -49,6 +51,24 @@ Existing Django App (no tests, no service layer)
   App now conforms → use /superjeff:build for new features
 ```
 
+**For existing repos (working UI, no design system):**
+
+```text
+Existing Django Templates (no design tokens, no HTMX, no accessibility baseline)
+        ↓
+  /superjeff:conform-ui <app> <templates_path>
+        ├─ UI Audit           ← read all templates, CSS, JS → existing UX spec + gap report
+        ├─ Design Tokens      ← derive token system from existing palette → tokens.css
+        ├─ Base Template      ← fix/create base.html (skip link, landmarks, HTMX)
+        ├─ Accessibility      ← fix critical gaps (labels, alt, keyboard nav)
+        ├─ Empty + Loading    ← empty states for all lists, hx-indicator everywhere
+        ├─ HTMX Migration     ← replace JS/full-page reloads with HTMX patterns
+        ├─ Component Extract  ← extract reusable HTML to named partials
+        └─ Token Application  ← replace hardcoded values with var(--token) references
+        ↓
+  UI now conforms → use /superjeff:design for new feature UI
+```
+
 ---
 
 ## Commands
@@ -58,9 +78,11 @@ Existing Django App (no tests, no service layer)
 | `/superjeff:brainstorm` | Design gate — Socratic validation before planning |
 | `/superjeff:decompose` | Business case → structured Django app list |
 | `/superjeff:specify <app>` | App definition → full implementation spec |
+| `/superjeff:design <app>` | UX spec — design tokens, pages, HTMX patterns, accessibility |
 | `/superjeff:build <app>` | Full TDD pipeline: plan → RED → GREEN → review → audit |
 | `/superjeff:validate` | Full quality + security audit |
 | `/superjeff:conform <app>` | Bring existing app into conformance (audit → refactor → proper tests) |
+| `/superjeff:conform-ui <app> <path>` | Bring existing templates into conformance (audit → tokens → HTMX → accessibility) |
 | `/superjeff:checkpoint` | Save pipeline state + print progress summary |
 | `/superjeff:learn` | Capture a session insight as a permanent instinct rule |
 
@@ -75,7 +97,8 @@ superjeff/
 │   ├── product/            # Product Decomposition Agent
 │   ├── requirements/       # Requirements Agent (per app)
 │   ├── audit/              # Audit Agent — reads existing code, reverse-engineers spec + gaps
-│   ├── frontend/           # User flow + component spec agent
+│   ├── ui-audit/           # UI Audit Agent — reads templates, CSS, JS → UX spec + gap report
+│   ├── frontend/           # Frontend Agent — UX spec with design tokens, HTMX patterns, a11y
 │   ├── quality/            # 5-gate quality audit (incl. architecture compliance)
 │   └── security/           # OWASP Top 10 security audit agent
 │
@@ -87,6 +110,7 @@ superjeff/
 │   ├── code-review/             # 2-stage review: spec compliance + architecture
 │   ├── verification/            # Evidence-before-claims gate (fresh pytest + grep)
 │   ├── debugging/               # 4-phase root-cause methodology
+│   ├── ux-design/               # UX spec: design tokens, pages, HTMX patterns, accessibility
 │   ├── decomposition/           # Business case → domain mapping
 │   ├── django/                  # Model/serializer/view generation patterns
 │   └── validation/              # Quality and security gate checklists
@@ -94,8 +118,9 @@ superjeff/
 ├── workflows/
 │   ├── bc_to_apps.yaml          # Decompose workflow
 │   ├── app_to_requirements.yaml # Specify workflow
-│   ├── build_pipeline.yaml      # Build pipeline v2 — new features (9 stages)
-│   └── conform_pipeline.yaml    # Conform pipeline — existing code (9 stages)
+│   ├── build_pipeline.yaml      # Build pipeline v3 — backend + HTMX frontend (10 stages)
+│   ├── conform_pipeline.yaml    # Conform pipeline — existing backend code (9 stages)
+│   └── conform_ui_pipeline.yaml # Conform UI pipeline — existing templates (9 stages)
 │
 ├── schemas/
 │   ├── app_schema.json          # Validates decomposition output
@@ -112,13 +137,16 @@ superjeff/
 │   └── hooks.json               # 16 hooks across 5 lifecycle events
 │
 ├── commands/
-│   ├── brainstorm.md   # /superjeff:brainstorm
-│   ├── decompose.md    # /superjeff:decompose
-│   ├── specify.md      # /superjeff:specify
-│   ├── build.md        # /superjeff:build
-│   ├── validate.md     # /superjeff:validate
-│   ├── checkpoint.md   # /superjeff:checkpoint
-│   └── learn.md        # /superjeff:learn
+│   ├── brainstorm.md    # /superjeff:brainstorm
+│   ├── decompose.md     # /superjeff:decompose
+│   ├── specify.md       # /superjeff:specify
+│   ├── design.md        # /superjeff:design
+│   ├── build.md         # /superjeff:build
+│   ├── validate.md      # /superjeff:validate
+│   ├── conform.md       # /superjeff:conform
+│   ├── conform-ui.md    # /superjeff:conform-ui
+│   ├── checkpoint.md    # /superjeff:checkpoint
+│   └── learn.md         # /superjeff:learn
 │
 ├── examples/
 │   └── expense-tracker/   # Full end-to-end example
@@ -144,10 +172,29 @@ superjeff/
 - **Output**: Full spec — models, serializers, views, permissions, business rules, test cases
 - **File**: [agents/requirements/requirements-agent.md](agents/requirements/requirements-agent.md)
 
+### Frontend Agent
+
+- **Input**: Requirements Agent output (API contract) + brainstorm design artifact
+- **Output**: UX spec — design tokens, page inventory, component library, HTMX patterns, accessibility baseline
+- **Stack**: Django templates + HTMX + vanilla JS (HTMX-first)
+- **File**: [agents/frontend/frontend-agent.md](agents/frontend/frontend-agent.md)
+
+### Audit Agent
+
+- **Input**: Existing Django app (code path)
+- **Output**: Reverse-engineered requirements spec + architecture gap report + characterization test plan
+- **File**: [agents/audit/audit-agent.md](agents/audit/audit-agent.md)
+
+### UI Audit Agent
+
+- **Input**: Existing Django app templates + CSS + JS paths
+- **Output**: Reverse-engineered UX spec + design gap report + UI refactor plan
+- **File**: [agents/ui-audit/ui-audit-agent.md](agents/ui-audit/ui-audit-agent.md)
+
 ### Quality Agent
 
 - **Input**: Generated Django code
-- **Output**: Structured quality report (test coverage, conventions, accessibility)
+- **Output**: Structured quality report (test coverage, architecture compliance, conventions)
 - **File**: [agents/quality/quality-agent.md](agents/quality/quality-agent.md)
 
 ### Security Agent
