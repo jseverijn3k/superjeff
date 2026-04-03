@@ -2,6 +2,8 @@
 
 An AI-native software development system that transforms a high-level business case into a fully implementable, tested, and security-audited Django application — using structured multi-agent workflows.
 
+**Not sure which command to run?** See [PLAYBOOK.md](PLAYBOOK.md) — decision trees, when to use each pipeline, agent reference, and artifact map.
+
 ---
 
 ## What It Does
