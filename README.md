@@ -6,6 +6,34 @@ An AI-native software development system that transforms a high-level business c
 
 ---
 
+## Installation
+
+SuperJeff is a toolbox — you do **not** copy it into your project. You install it once and it works across all your Django projects via symlinked commands, hooks in Claude Code's settings, and `@`-references in your project's `CLAUDE.md`.
+
+**Quick install (global):**
+
+```bash
+# 1. Clone
+git clone https://github.com/yourname/superjeff ~/superjeff
+
+# 2. Symlink commands to Claude Code's global commands directory
+mkdir -p ~/.claude/commands
+for cmd in brainstorm decompose specify design build validate conform conform-ui checkpoint learn; do
+  ln -s ~/superjeff/commands/${cmd}.md ~/.claude/commands/superjeff-${cmd}.md
+done
+
+# 3. Merge hooks/hooks.json into ~/.claude/settings.json (manual step — see INSTALL.md)
+
+# 4. In your Django project's CLAUDE.md, add:
+#    @~/superjeff/instincts/django.yaml
+#    @~/superjeff/instincts/security.yaml
+#    @~/superjeff/instincts/testing.yaml
+```
+
+Full installation guide (global, per-project submodule, new project from scratch): **[INSTALL.md](INSTALL.md)**
+
+---
+
 ## What It Does
 
 **For new projects:**
