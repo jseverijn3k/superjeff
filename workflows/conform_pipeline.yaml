@@ -1,0 +1,224 @@
+name: conform_pipeline
+description: >
+  Bring an existing Django app into conformance with SuperJeff architecture conventions.
+  Works on apps that have working code but lack tests, service layer, or FBV compliance.
+  After conform completes, the app can enter the normal build_pipeline for new features.
+version: "1.0"
+
+input:
+  app_name:
+    type: string
+    required: true
+    description: Name of the existing Django app to conform
+  app_path:
+    type: string
+    required: true
+    description: "Path to the app, e.g. apps/expenses"
+
+stages:
+  - id: audit
+    name: Audit Existing Code
+    description: >
+      Read all existing code in the app and produce three artifacts:
+      1. Reverse-engineered requirements spec (what the code currently does)
+      2. Architecture gap report (what does not conform to SuperJeff rules)
+      3. Characterization test plan (what tests are needed before refactoring)
+      See agents/audit/audit-agent.md.
+    agent: agents/audit/audit-agent.md
+    input:
+      app_name: "{{ input.app_name }}"
+      app_path: "{{ input.app_path }}"
+    output:
+      requirements_spec: "artifacts/requirements/{{ input.app_name }}_existing.json"
+      gap_report: "artifacts/reports/{{ input.app_name }}_gaps.json"
+      characterization_plan: "artifacts/plans/{{ input.app_name }}_characterization_plan.md"
+    git_commit: "audit({{ input.app_name }}): reverse-engineered spec + gap report"
+    on_failure: halt
+
+  - id: review_gaps
+    name: Review Gap Report
+    description: >
+      Surface the gap report to the user. Critical gaps (CBVs, direct ORM, no tests,
+      hardcoded secrets) must be acknowledged before proceeding.
+      Effort estimates let the user prioritise what to fix first.
+    action: surface_report
+    input:
+      report: "{{ stages.audit.output.gap_report }}"
+    gates:
+      - no_unacknowledged_critical_gaps: true
+    on_failure: halt
+
+  - id: factories
+    name: Create Factories for Existing Models
+    description: >
+      Create factory_boy factories for every model in the app.
+      These are needed before characterization tests can be written.
+      Use the reverse-engineered spec to understand model shapes.
+      See skills/testing/SKILL.md for factory patterns.
+    skill: skills/testing/SKILL.md
+    input:
+      requirements_spec: "{{ stages.audit.output.requirements_spec }}"
+    output:
+      artifact: "{{ input.app_path }}/tests/factories.py"
+    git_commit: "test({{ input.app_name }}): factories for existing models"
+    on_failure: halt
+
+  - id: characterization_tests
+    name: Write Characterization Tests (Safety Net)
+    description: >
+      Write tests that document CURRENT behaviour — including bugs.
+      These must ALL PASS before any refactoring begins.
+      They are the safety net: if refactoring changes behaviour, these fail.
+      See skills/characterization-testing/SKILL.md.
+    skill: skills/characterization-testing/SKILL.md
+    input:
+      characterization_plan: "{{ stages.audit.output.characterization_plan }}"
+      app_path: "{{ input.app_path }}"
+    output:
+      artifact: "{{ input.app_path }}/tests/test_characterization.py"
+    verify:
+      command: "pytest {{ input.app_path }}/tests/test_characterization.py -v"
+      expected: "all PASS — if any fail, fix the test not the code"
+    git_commit: "test({{ input.app_name }}): characterization tests — current behaviour locked"
+    on_failure: halt
+
+  - id: refactor_plan
+    name: Generate Refactoring Task Plan
+    description: >
+      Produce a granular, dependency-ordered refactoring plan from the gap report.
+      Every task targets one gap, has exact file paths, complete code, a verify command,
+      and runs the characterization suite after each step.
+      Task order is fixed: secrets/security → exceptions → models → services → serializers
+      → views (FBV migration) → urls → cleanup.
+      See skills/planning/SKILL.md.
+    skill: skills/planning/SKILL.md
+    input:
+      gap_report: "{{ stages.audit.output.gap_report }}"
+      requirements_spec: "{{ stages.audit.output.requirements_spec }}"
+      characterization_tests: "{{ stages.characterization_tests.output }}"
+    output:
+      artifact: "artifacts/plans/{{ input.app_name }}_refactor_plan.md"
+    rules:
+      - task_size_target: "2-5 minutes each"
+      - verify_after_each_task: "pytest {{ input.app_path }}/tests/test_characterization.py -v"
+      - characterization_must_stay_green: true
+      - task_order:
+          - fix_critical_security_gaps
+          - add_exceptions_module
+          - fix_models
+          - extract_service_layer
+          - fix_serializers
+          - migrate_views_to_fbv
+          - fix_urls
+          - cleanup_dead_code
+    git_commit: "plan({{ input.app_name }}): refactoring task plan from gap report"
+    on_failure: halt
+
+  - id: refactor
+    name: Execute Refactoring Plan
+    description: >
+      Execute the refactoring plan task by task.
+      After every task: run characterization tests — they must stay green.
+      If any characterization test fails: undo the task, investigate, fix approach.
+      Architecture rules enforced: FBV only, service layer mandatory, models dumb.
+      See skills/planning/SKILL.md and skills/characterization-testing/SKILL.md.
+    skill: skills/planning/SKILL.md
+    input:
+      plan: "{{ stages.refactor_plan.output }}"
+      characterization_tests: "{{ stages.characterization_tests.output }}"
+    verify_after_each_task:
+      command: "pytest {{ input.app_path }}/tests/test_characterization.py -v --tb=short"
+      expected: "all PASS"
+    git_commit_per_task: true
+    git_commit_format: "refactor({{ input.app_name }}): <task description>"
+    on_failure: halt
+
+  - id: architecture_verification
+    name: Architecture Verification Gate
+    description: >
+      Confirm all critical gaps from the gap report are resolved.
+      Run grep checks for CBVs, ViewSets, direct ORM in views, fields=__all__.
+      See skills/verification/SKILL.md.
+    skill: skills/verification/SKILL.md
+    input:
+      app_path: "{{ input.app_path }}"
+      gap_report: "{{ stages.audit.output.gap_report }}"
+    verify:
+      - command: "grep -rn 'class.*APIView\\|ModelViewSet\\|ReadOnlyModelViewSet' {{ input.app_path }}/"
+        expected: "no output"
+      - command: "grep -rn '\\.objects\\.' {{ input.app_path }}/views*.py 2>/dev/null"
+        expected: "no output"
+      - command: "grep -rn \"fields = '__all__'\" {{ input.app_path }}/"
+        expected: "no output"
+      - command: "grep -rn '^[^#]*print(' {{ input.app_path }}/ | grep -v test"
+        expected: "no output"
+    on_failure: halt
+
+  - id: replace_characterization_tests
+    name: Replace Characterization Tests with Proper Tests
+    description: >
+      Now that the architecture is clean, write proper tests that assert what the code
+      SHOULD do — not just what it happens to do.
+      Delete test_characterization.py and replace with:
+        test_models.py, test_services.py, test_views.py, test_api.py
+      Use the same patterns as build_pipeline (pytest + factory_boy + APIClient).
+      Each endpoint needs: success, 401, 403, 400, 404.
+      See skills/testing/SKILL.md.
+    skill: skills/testing/SKILL.md
+    input:
+      requirements_spec: "{{ stages.audit.output.requirements_spec }}"
+      app_path: "{{ input.app_path }}"
+    output:
+      - "{{ input.app_path }}/tests/test_models.py"
+      - "{{ input.app_path }}/tests/test_services.py"
+      - "{{ input.app_path }}/tests/test_views.py"
+      - "{{ input.app_path }}/tests/test_api.py"
+    verify:
+      command: "pytest {{ input.app_path }}/tests/ -v --tb=short"
+      expected: "all PASS, 0 failures"
+    git_commit: "test({{ input.app_name }}): replace characterization tests with proper tests"
+    on_failure: halt
+
+  - id: quality_audit
+    name: Quality Agent Audit
+    description: Final 5-gate quality check — same gates as build_pipeline.
+    agent: agents/quality/quality-agent.md
+    input:
+      app_path: "{{ input.app_path }}"
+      requirements: "{{ stages.audit.output.requirements_spec }}"
+    output:
+      report: "artifacts/reports/{{ input.app_name }}_quality.json"
+    on_failure: halt_on_critical
+
+  - id: security_review
+    name: Security Agent Audit
+    description: OWASP Top 10 audit on the now-refactored app.
+    agent: agents/security/security-agent.md
+    input:
+      app_path: "{{ input.app_path }}"
+    output:
+      report: "artifacts/reports/{{ input.app_name }}_security.json"
+    on_failure: halt_on_critical
+
+  - id: validate
+    name: Final Conform Validation
+    action: run_all_checks
+    input:
+      gap_report: "{{ stages.audit.output.gap_report }}"
+      quality_report: "{{ stages.quality_audit.output.report }}"
+      security_report: "{{ stages.security_review.output.report }}"
+    gates:
+      - all_critical_gaps_resolved: true
+      - all_tests_pass: true
+      - no_characterization_tests_remaining: true
+      - no_critical_quality_findings: true
+      - no_critical_security_findings: true
+    git_commit: "validate({{ input.app_name }}): conform complete — ready for build_pipeline"
+
+output:
+  requirements_spec: "artifacts/requirements/{{ input.app_name }}_existing.json"
+  gap_report: "artifacts/reports/{{ input.app_name }}_gaps.json"
+  quality_report: "artifacts/reports/{{ input.app_name }}_quality.json"
+  security_report: "artifacts/reports/{{ input.app_name }}_security.json"
+  status: "{{ stages.validate.status }}"
+  next_workflow: "build_pipeline — app is now conform and ready for new features"

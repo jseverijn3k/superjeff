@@ -46,10 +46,11 @@ SuperJeff uses git as the audit trail for the pipeline. Every stage transition i
 | `design` | After brainstorm design artifact is saved |
 | `decompose` | After Product Decomposition Agent produces app list |
 | `specify` | After Requirements Agent produces app spec |
+| `audit` | After Audit Agent produces spec + gap report (conform pipeline) |
 | `plan` | After task breakdown plan is generated |
-| `test` | After failing tests are written (RED phase) |
+| `test` | After failing/characterization tests are written |
 | `implement` | After implementation passes tests (GREEN phase) |
-| `refactor` | After code review and Quality Agent fixes |
+| `refactor` | After code review, Quality Agent fixes, or refactor task |
 | `secure` | After Security Agent review and fixes |
 | `validate` | After full validation passes |
 
@@ -85,7 +86,7 @@ validate(expenses): all quality and security gates pass
 
 ---
 
-## Pipeline Stages
+## Pipeline A — New Features (build_pipeline)
 
 ```text
 Business Case
@@ -97,7 +98,7 @@ Product Decomposition       [Product Decomposition Agent]
 App Requirements            [Requirements Agent × N apps]
      ↓  git commit: specify(<app>) per app
 Implementation Plan         [Planning Skill — 2-5 min tasks, exact code, verify cmds]
-     ↓  → artifacts/plans/<app>_plan.md
+     ↓  git commit: plan(<app>)
 TDD — Write Failing Tests   [Testing Skill — pytest + factory_boy]
      ↓  git commit: test(<app>)   ← all tests confirmed FAILING
 TDD — Implement to Pass     [Follow plan task-by-task, verify after each]
@@ -112,6 +113,31 @@ Security Audit              [Security Agent — OWASP Top 10]
      ↓  git commit: secure(<app>)
 Validated Artifact
      ↓  git commit: validate(<app>)
+```
+
+## Pipeline B — Existing Repos (conform_pipeline)
+
+```text
+Existing Django App (working code, no tests)
+     ↓
+/superjeff:conform <app>    [Audit Agent]
+     ↓  git commit: audit(<app>)   ← spec + gap report
+Factories                   [Testing Skill]
+     ↓  git commit: test(<app>): factories
+Characterization Tests      [Characterization Testing Skill — safety net]
+     ↓  git commit: test(<app>): characterization tests
+     ↓  ALL MUST PASS before touching any code
+Refactor Plan               [Planning Skill — 2-5 min tasks, charact. suite after each]
+     ↓  git commit: plan(<app>): refactor plan
+Refactor                    [Execute plan — security → models → services → FBVs → urls]
+     ↓  git commit: refactor(<app>): <task> per task
+Architecture Verification   [Verification Skill — grep confirms no CBVs/direct ORM]
+Replace Tests               [Testing Skill — proper tests replace characterization]
+     ↓  git commit: test(<app>): replace characterization tests
+Quality + Security Audit
+     ↓  git commit: validate(<app>): conform complete
+     ↓
+App conforms → continue with Pipeline A for new features
 ```
 
 ---

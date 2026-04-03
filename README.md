@@ -6,6 +6,8 @@ An AI-native software development system that transforms a high-level business c
 
 ## What It Does
 
+**For new projects:**
+
 ```text
 Business Case (free text)
         ↓
@@ -29,6 +31,24 @@ Business Case (free text)
   Production-Ready Django App
 ```
 
+**For existing repos (working code, no tests):**
+
+```text
+Existing Django App (no tests, no service layer)
+        ↓
+  /superjeff:conform <app>
+        ├─ Audit              ← read existing code → spec + gap report
+        ├─ Factories          ← factory_boy for all existing models
+        ├─ Characterization   ← tests locking current behaviour (safety net)
+        ├─ Refactor Plan      ← 2-5 min tasks, characterization suite after each
+        ├─ Refactor           ← security → models → services → FBVs → urls
+        ├─ Architecture Check ← grep confirms no CBVs, no direct ORM
+        ├─ Replace Tests      ← proper tests replace characterization tests
+        └─ Quality + Security Audit
+        ↓
+  App now conforms → use /superjeff:build for new features
+```
+
 ---
 
 ## Commands
@@ -40,6 +60,7 @@ Business Case (free text)
 | `/superjeff:specify <app>` | App definition → full implementation spec |
 | `/superjeff:build <app>` | Full TDD pipeline: plan → RED → GREEN → review → audit |
 | `/superjeff:validate` | Full quality + security audit |
+| `/superjeff:conform <app>` | Bring existing app into conformance (audit → refactor → proper tests) |
 | `/superjeff:checkpoint` | Save pipeline state + print progress summary |
 | `/superjeff:learn` | Capture a session insight as a permanent instinct rule |
 
@@ -53,25 +74,28 @@ superjeff/
 │   ├── orchestrator/       # Routes tasks, maintains pipeline state
 │   ├── product/            # Product Decomposition Agent
 │   ├── requirements/       # Requirements Agent (per app)
+│   ├── audit/              # Audit Agent — reads existing code, reverse-engineers spec + gaps
 │   ├── frontend/           # User flow + component spec agent
 │   ├── quality/            # 5-gate quality audit (incl. architecture compliance)
 │   └── security/           # OWASP Top 10 security audit agent
 │
 ├── skills/
-│   ├── brainstorming/      # Socratic design gate before planning
-│   ├── planning/           # 2-5 min subtask breakdown with verify commands
-│   ├── testing/            # TDD workflow (RED→GREEN→REFACTOR)
-│   ├── code-review/        # 2-stage review: spec compliance + architecture
-│   ├── verification/       # Evidence-before-claims gate (fresh pytest + grep)
-│   ├── debugging/          # 4-phase root-cause methodology
-│   ├── decomposition/      # Business case → domain mapping
-│   ├── django/             # Model/serializer/view generation patterns
-│   └── validation/         # Quality and security gate checklists
+│   ├── brainstorming/           # Socratic design gate before planning
+│   ├── planning/                # 2-5 min subtask breakdown with verify commands
+│   ├── testing/                 # TDD workflow (RED→GREEN→REFACTOR)
+│   ├── characterization-testing/ # Safety net tests for existing code before refactoring
+│   ├── code-review/             # 2-stage review: spec compliance + architecture
+│   ├── verification/            # Evidence-before-claims gate (fresh pytest + grep)
+│   ├── debugging/               # 4-phase root-cause methodology
+│   ├── decomposition/           # Business case → domain mapping
+│   ├── django/                  # Model/serializer/view generation patterns
+│   └── validation/              # Quality and security gate checklists
 │
 ├── workflows/
 │   ├── bc_to_apps.yaml          # Decompose workflow
 │   ├── app_to_requirements.yaml # Specify workflow
-│   └── build_pipeline.yaml      # Build pipeline v2 (9 stages)
+│   ├── build_pipeline.yaml      # Build pipeline v2 — new features (9 stages)
+│   └── conform_pipeline.yaml    # Conform pipeline — existing code (9 stages)
 │
 ├── schemas/
 │   ├── app_schema.json          # Validates decomposition output
