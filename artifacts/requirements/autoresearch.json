@@ -1,0 +1,233 @@
+{
+  "app": "autoresearch",
+  "version": "1.0",
+  "design_artifact": "artifacts/specs/2026-04-12-autoresearch.md",
+  "description": "Autonomous performance research loop for Django apps — measures, experiments, keeps or discards",
+
+  "scope": {
+    "modifiable_targets": ["views", "services", "templates", "caching", "middleware"],
+    "off_limits": ["models", "migrations", "settings secrets", "files outside target app"],
+    "loop_mode": "fully_autonomous"
+  },
+
+  "fitness_function": {
+    "formula": "0.6 * backend_score + 0.4 * frontend_score",
+    "backend": {
+      "weight": 0.6,
+      "metrics": ["query_count", "p95_response_time_ms"],
+      "measurement": "pytest + django-assert-num-queries + Django test client",
+      "score_range": [0, 100],
+      "scoring": "lower query_count + lower response_time = higher score"
+    },
+    "frontend": {
+      "weight": 0.4,
+      "metrics": ["lighthouse_performance_score"],
+      "measurement": "Playwright + Lighthouse headless Chrome",
+      "score_range": [0, 100],
+      "scoring": "higher Lighthouse score = higher score"
+    }
+  },
+
+  "safety_gates": {
+    "logic": "AND — both must pass for KEEP",
+    "gate_1": {
+      "name": "tests_green",
+      "check": "All existing pytest tests pass",
+      "on_fail": "DISCARD — git checkout, no commit"
+    },
+    "gate_2": {
+      "name": "score_improved",
+      "check": "combined_score >= previous_iteration_score",
+      "on_fail": "DISCARD — git checkout, no commit"
+    }
+  },
+
+  "files": {
+    "command": "commands/autoresearch.md",
+    "agent": "agents/autoresearch/autoresearch-agent.md",
+    "program_template": "templates/autoresearch.md",
+    "fitness_utility": "autoresearch/measure_fitness.py",
+    "per_app_program": "artifacts/autoresearch/<app>/program.md",
+    "per_app_log": "artifacts/autoresearch/<app>/log.json"
+  },
+
+  "modules": {
+    "measure_fitness": {
+      "file": "autoresearch/measure_fitness.py",
+      "functions": [
+        {
+          "name": "measure_backend",
+          "signature": "measure_backend(app_name: str, urls: list[str]) -> dict",
+          "returns": {
+            "query_count": "int — total queries across all tested URLs",
+            "p95_response_time_ms": "float — 95th percentile response time",
+            "score": "float — 0 to 100, higher is better"
+          },
+          "implementation": "Django test client, assert_num_queries, 10 requests per URL"
+        },
+        {
+          "name": "measure_frontend",
+          "signature": "measure_frontend(base_url: str, paths: list[str]) -> dict",
+          "returns": {
+            "lighthouse_performance": "float — 0 to 100",
+            "score": "float — same as lighthouse_performance"
+          },
+          "implementation": "Playwright launches Chrome, runs Lighthouse CLI, parses JSON output"
+        },
+        {
+          "name": "combined_score",
+          "signature": "combined_score(backend: dict, frontend: dict, weights: tuple = (0.6, 0.4)) -> float",
+          "returns": "float — 0 to 100",
+          "implementation": "weights[0] * backend['score'] + weights[1] * frontend['score']"
+        },
+        {
+          "name": "run_tests",
+          "signature": "run_tests(app_name: str) -> dict",
+          "returns": {
+            "passed": "bool",
+            "failed_count": "int",
+            "output": "str"
+          },
+          "implementation": "subprocess.run pytest, capture output, parse exit code"
+        }
+      ]
+    }
+  },
+
+  "iteration_log_schema": {
+    "file": "artifacts/autoresearch/<app>/log.json",
+    "entry": {
+      "iteration": "int",
+      "timestamp": "ISO8601",
+      "hypothesis": "str — what the agent changed and why",
+      "diff_summary": "str — files changed",
+      "backend_score": "float",
+      "frontend_score": "float",
+      "combined_score": "float",
+      "tests_passed": "bool",
+      "decision": "KEEP | DISCARD",
+      "git_commit": "str | null — SHA if KEEP"
+    }
+  },
+
+  "program_md_template": {
+    "sections": [
+      "app_name",
+      "goal",
+      "urls_to_measure",
+      "current_baseline_score",
+      "constraints",
+      "agent_notes"
+    ]
+  },
+
+  "agent_loop_protocol": {
+    "steps": [
+      "1. Read program.md for this app",
+      "2. Read current combined_score from log.json (or measure baseline if first run)",
+      "3. Propose one hypothesis — a single targeted change",
+      "4. Apply the change (edit files in target app only)",
+      "5. run_tests() — if fails: DISCARD, git checkout, log entry, go to step 3",
+      "6. measure_backend() + measure_frontend() — compute combined_score",
+      "7. If combined_score < previous: DISCARD, git checkout, log entry, go to step 3",
+      "8. KEEP: git commit with message autoresearch(<app>): iteration N — score X.XX",
+      "9. Append log entry",
+      "10. Repeat from step 3"
+    ],
+    "loop_mechanism": "SuperJeff /loop skill — self-paced",
+    "termination": "user interrupts or max_iterations reached (default: no limit)"
+  },
+
+  "dependencies": {
+    "python": [
+      "pytest",
+      "django-assert-num-queries",
+      "playwright",
+      "lighthouse (npm, called via subprocess)"
+    ],
+    "npm": ["lighthouse"]
+  },
+
+  "test_cases": [
+    {
+      "id": "TC-001",
+      "name": "baseline measurement returns valid scores",
+      "type": "happy_path",
+      "given": "A running Django dev server with a target app",
+      "when": "measure_backend() and measure_frontend() are called",
+      "then": "Both return dicts with score in range 0-100"
+    },
+    {
+      "id": "TC-002",
+      "name": "combined_score respects 60/40 weighting",
+      "type": "happy_path",
+      "given": "backend score=80, frontend score=60",
+      "when": "combined_score() is called",
+      "then": "Returns 0.6*80 + 0.4*60 = 72.0"
+    },
+    {
+      "id": "TC-003",
+      "name": "failing tests trigger DISCARD",
+      "type": "safety_gate",
+      "given": "Agent has applied a change that breaks a test",
+      "when": "run_tests() is called",
+      "then": "decision = DISCARD, git checkout is run, no commit is made"
+    },
+    {
+      "id": "TC-004",
+      "name": "lower combined score triggers DISCARD",
+      "type": "safety_gate",
+      "given": "Previous combined_score=75, new combined_score=72",
+      "when": "iteration completes",
+      "then": "decision = DISCARD, git checkout is run, no commit is made"
+    },
+    {
+      "id": "TC-005",
+      "name": "equal score does not trigger DISCARD",
+      "type": "edge_case",
+      "given": "Previous combined_score=75, new combined_score=75",
+      "when": "iteration completes",
+      "then": "decision = KEEP — score must be >= not strictly >"
+    },
+    {
+      "id": "TC-006",
+      "name": "improved score produces git commit",
+      "type": "happy_path",
+      "given": "Tests pass and combined_score improves from 70 to 75",
+      "when": "iteration completes",
+      "then": "Git commit created with message autoresearch(<app>): iteration N — score 75.00"
+    },
+    {
+      "id": "TC-007",
+      "name": "log.json appended after every iteration",
+      "type": "happy_path",
+      "given": "Any completed iteration — KEEP or DISCARD",
+      "when": "iteration completes",
+      "then": "log.json contains one new entry with all required fields"
+    },
+    {
+      "id": "TC-008",
+      "name": "agent never touches models.py or migrations",
+      "type": "constraint",
+      "given": "Agent proposes a hypothesis",
+      "when": "Hypothesis involves datamodel change",
+      "then": "Agent rejects own hypothesis and proposes a different one"
+    },
+    {
+      "id": "TC-009",
+      "name": "measure_backend handles zero queries gracefully",
+      "type": "edge_case",
+      "given": "A view that makes zero DB queries",
+      "when": "measure_backend() is called",
+      "then": "query_count=0 is valid, score=100 for that dimension"
+    },
+    {
+      "id": "TC-010",
+      "name": "Lighthouse failure does not crash loop",
+      "type": "failure_path",
+      "given": "Dev server is not running when measure_frontend() is called",
+      "when": "measure_frontend() is called",
+      "then": "Returns score=0 and logs error — loop continues with DISCARD decision"
+    }
+  ]
+}

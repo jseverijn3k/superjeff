@@ -1,0 +1,99 @@
+{
+  "app": "autoresearch",
+  "version": "1.0",
+  "description": "Internal utility contract — no HTTP endpoints. Defines Python function signatures and CLI interface.",
+
+  "python_api": {
+    "module": "autoresearch.measure_fitness",
+    "functions": [
+      {
+        "name": "measure_backend",
+        "signature": "measure_backend(app_name: str, urls: list[str]) -> dict",
+        "input": {
+          "app_name": "str — Django app label, e.g. 'expenses'",
+          "urls": "list[str] — URL paths to test, e.g. ['/expenses/', '/expenses/1/']"
+        },
+        "output": {
+          "query_count": "int",
+          "p95_response_time_ms": "float",
+          "score": "float — 0 to 100"
+        },
+        "errors": {
+          "AppNotFound": "app_name not in INSTALLED_APPS",
+          "URLNotResolvable": "a URL in urls list cannot be resolved"
+        }
+      },
+      {
+        "name": "measure_frontend",
+        "signature": "measure_frontend(base_url: str, paths: list[str]) -> dict",
+        "input": {
+          "base_url": "str — running server base URL, e.g. 'http://localhost:8000'",
+          "paths": "list[str] — URL paths to audit"
+        },
+        "output": {
+          "lighthouse_performance": "float — 0 to 100",
+          "score": "float — same as lighthouse_performance"
+        },
+        "errors": {
+          "ServerNotReachable": "base_url is not responding — returns score=0",
+          "LighthouseNotInstalled": "npm lighthouse not found — returns score=0"
+        }
+      },
+      {
+        "name": "combined_score",
+        "signature": "combined_score(backend: dict, frontend: dict, weights: tuple = (0.6, 0.4)) -> float",
+        "input": {
+          "backend": "dict from measure_backend()",
+          "frontend": "dict from measure_frontend()",
+          "weights": "tuple — must sum to 1.0"
+        },
+        "output": "float — 0 to 100",
+        "errors": {
+          "WeightsSumError": "weights do not sum to 1.0"
+        }
+      },
+      {
+        "name": "run_tests",
+        "signature": "run_tests(app_name: str) -> dict",
+        "input": {
+          "app_name": "str — Django app label"
+        },
+        "output": {
+          "passed": "bool",
+          "failed_count": "int",
+          "output": "str — pytest stdout"
+        },
+        "errors": {
+          "PytestNotFound": "pytest not installed in environment"
+        }
+      }
+    ]
+  },
+
+  "cli_interface": {
+    "description": "Agent invokes the loop via SuperJeff /loop skill",
+    "command": "/superjeff:autoresearch <app_name>",
+    "arguments": {
+      "app_name": "required — Django app to optimize"
+    },
+    "reads": "artifacts/autoresearch/<app_name>/program.md",
+    "writes": "artifacts/autoresearch/<app_name>/log.json"
+  },
+
+  "log_entry_contract": {
+    "type": "object",
+    "required": ["iteration", "timestamp", "hypothesis", "diff_summary", "backend_score", "frontend_score", "combined_score", "tests_passed", "decision"],
+    "properties": {
+      "iteration": {"type": "integer", "minimum": 1},
+      "timestamp": {"type": "string", "format": "date-time"},
+      "hypothesis": {"type": "string"},
+      "diff_summary": {"type": "string"},
+      "backend_score": {"type": "number", "minimum": 0, "maximum": 100},
+      "frontend_score": {"type": "number", "minimum": 0, "maximum": 100},
+      "combined_score": {"type": "number", "minimum": 0, "maximum": 100},
+      "tests_passed": {"type": "boolean"},
+      "decision": {"type": "string", "enum": ["KEEP", "DISCARD"]},
+      "git_commit": {"type": ["string", "null"]}
+    }
+  }
+}
