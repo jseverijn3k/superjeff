@@ -3,15 +3,17 @@ autoresearch.loop
 Iteration orchestrator for the autoresearch loop.
 
 Reads program.md, runs one experiment iteration, measures fitness,
-and commits or discards based on safety gates.
+and keeps or discards based on safety gates.
 """
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from autoresearch.measure_fitness import (
     combined_score,
@@ -20,10 +22,33 @@ from autoresearch.measure_fitness import (
     run_tests,
 )
 
+_SAFE_APP_NAME = re.compile(r"^[a-zA-Z0-9_]{1,64}$")
+_SAFE_URL_SCHEMES = {"http", "https"}
+
+
+def _validate_app_name(app_name: str) -> None:
+    """Prevent path traversal via app_name."""
+    if not _SAFE_APP_NAME.match(app_name):
+        raise ValueError(
+            f"app_name must be alphanumeric/underscore only, got: {app_name!r}"
+        )
+
+
+def _validate_base_url(base_url: str) -> None:
+    """Prevent command injection via base_url."""
+    parsed = urlparse(base_url)
+    if parsed.scheme not in _SAFE_URL_SCHEMES:
+        raise ValueError(
+            f"base_url must use http or https scheme, got: {base_url!r}"
+        )
+    if not parsed.netloc:
+        raise ValueError(f"base_url must include a valid host, got: {base_url!r}")
+
 
 def load_program(app_name: str) -> dict[str, Any]:
     """Load and parse program.md for the given app."""
-    program_path = Path(f"artifacts/autoresearch/{app_name}/program.md")
+    _validate_app_name(app_name)
+    program_path = Path("artifacts") / "autoresearch" / app_name / "program.md"
     if not program_path.exists():
         raise FileNotFoundError(
             f"No program.md found at {program_path}. "
@@ -37,8 +62,6 @@ def load_program(app_name: str) -> dict[str, Any]:
             config["app_name"] = line.split(":", 1)[1].strip()
         elif line.startswith("base_url:"):
             config["base_url"] = line.split(":", 1)[1].strip()
-        elif line.startswith("urls:"):
-            pass
 
     urls: list[str] = []
     in_urls = False
@@ -55,12 +78,15 @@ def load_program(app_name: str) -> dict[str, Any]:
 
     config["urls"] = urls or ["/"]
     config.setdefault("base_url", "http://localhost:8000")
+
+    _validate_base_url(config["base_url"])
     return config
 
 
 def load_log(app_name: str) -> list[dict[str, Any]]:
     """Load existing iteration log or return empty list."""
-    log_path = Path(f"artifacts/autoresearch/{app_name}/log.json")
+    _validate_app_name(app_name)
+    log_path = Path("artifacts") / "autoresearch" / app_name / "log.json"
     if not log_path.exists():
         return []
     return json.loads(log_path.read_text())
@@ -68,7 +94,8 @@ def load_log(app_name: str) -> list[dict[str, Any]]:
 
 def save_log(app_name: str, entries: list[dict[str, Any]]) -> None:
     """Write iteration log to disk."""
-    log_path = Path(f"artifacts/autoresearch/{app_name}/log.json")
+    _validate_app_name(app_name)
+    log_path = Path("artifacts") / "autoresearch" / app_name / "log.json"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text(json.dumps(entries, indent=2))
 
@@ -80,6 +107,7 @@ def git_checkout_all() -> None:
 
 def git_commit(app_name: str, iteration: int, score: float) -> str:
     """Commit current changes and return the SHA."""
+    _validate_app_name(app_name)
     msg = f"autoresearch({app_name}): iteration {iteration} — score {score:.2f}"
     subprocess.run(["git", "add", "-A"], check=True, capture_output=True)
     subprocess.run(["git", "commit", "-m", msg], check=True, capture_output=True)
@@ -101,16 +129,8 @@ def run_iteration(
 
     The agent has already applied its proposed change before calling this.
     This function measures, decides, and commits or discards.
-
-    Args:
-        app_name:       Django app label
-        hypothesis:     What the agent changed and why
-        diff_summary:   Files changed (short description)
-        previous_score: Combined score from previous iteration (0-100)
-
-    Returns:
-        Iteration log entry dict
     """
+    _validate_app_name(app_name)
     log = load_log(app_name)
     iteration_number = len(log) + 1
 
@@ -137,7 +157,7 @@ def run_iteration(
         return entry
 
     backend = measure_backend(app_name, urls)
-    frontend = measure_frontend(base_url, [u for u in urls])
+    frontend = measure_frontend(base_url, urls)
     score = combined_score(backend, frontend)
 
     if score < previous_score:
