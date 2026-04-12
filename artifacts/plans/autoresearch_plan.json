@@ -1,0 +1,18 @@
+{
+  "app": "autoresearch",
+  "total_tasks": 12,
+  "tasks": [
+    {"id": 1, "type": "test", "file": "autoresearch/tests/test_measure_fitness.py", "description": "Write failing tests for combined_score() — weighting, edge cases"},
+    {"id": 2, "type": "test", "file": "autoresearch/tests/test_measure_fitness.py", "description": "Write failing tests for run_tests() — pass, fail, error paths"},
+    {"id": 3, "type": "test", "file": "autoresearch/tests/test_measure_fitness.py", "description": "Write failing tests for measure_backend() — scores, zero queries"},
+    {"id": 4, "type": "test", "file": "autoresearch/tests/test_measure_fitness.py", "description": "Write failing tests for measure_frontend() — Lighthouse, server unreachable"},
+    {"id": 5, "type": "implement", "file": "autoresearch/__init__.py", "description": "Create autoresearch package"},
+    {"id": 6, "type": "implement", "file": "autoresearch/measure_fitness.py", "description": "Implement combined_score() and run_tests()"},
+    {"id": 7, "type": "implement", "file": "autoresearch/measure_fitness.py", "description": "Implement measure_backend()"},
+    {"id": 8, "type": "implement", "file": "autoresearch/measure_fitness.py", "description": "Implement measure_frontend()"},
+    {"id": 9, "type": "implement", "file": "templates/autoresearch.md", "description": "Write program.md template"},
+    {"id": 10, "type": "implement", "file": "agents/autoresearch/autoresearch-agent.md", "description": "Write autoresearch agent instructions"},
+    {"id": 11, "type": "implement", "file": "commands/autoresearch.md", "description": "Write autoresearch command definition"},
+    {"id": 12, "type": "implement", "file": "autoresearch/loop.py", "description": "Implement iteration loop orchestrator"}
+  ]
+}
